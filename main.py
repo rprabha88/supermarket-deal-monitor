@@ -3,6 +3,7 @@
 Supermarket Deal Monitor
 Daily UK supermarket price tracker with WhatsApp alerts via Twilio.
 """
+from __future__ import annotations
 
 import asyncio
 import json
@@ -16,7 +17,9 @@ import httpx
 import redis.asyncio as aioredis
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 from twilio.rest import Client as TwilioClient
@@ -101,36 +104,56 @@ async def get_all_price_histories(items: list[dict]) -> dict:
     return result
 
 
-def resolve_search_queries(items: list[str], preferences: list[dict]) -> list[str]:
-    """Replace generic item names with preferred brand queries where set."""
-    pref_map = {p["generic_name"].lower(): p for p in preferences}
-    resolved: list[str] = []
+import re as _re
+_UK_POSTCODE_RE = _re.compile(r'^[A-Z]{1,2}\d[A-Z\d]?(\s*\d[A-Z]{2})?\s*,?\s*', _re.IGNORECASE)
+
+def clean_location(location: str) -> str:
+    """Strip leading UK postcode from a location string so SearchAPI accepts it."""
+    return _UK_POSTCODE_RE.sub('', location).strip().lstrip(',').strip() or location
+
+
+def resolve_search_requests(items: list[str], preferences: list[dict]) -> list[tuple[str, str]]:
+    """
+    Build (generic_name, query) pairs for searching.
+
+    If a saved preference includes an exact product, prefer that.
+    Otherwise fall back to preferred brand, otherwise use the generic item name.
+    """
+    pref_map = {p["generic_name"].strip().lower(): p for p in preferences if p.get("generic_name")}
+    resolved: list[tuple[str, str]] = []
     for item in items:
-        pref = pref_map.get(item.strip().lower())
-        if pref and pref.get("preferred_brand"):
-            resolved.append(f"{pref['preferred_brand']} {item}")
+        generic = item.strip()
+        pref = pref_map.get(generic.lower())
+        if pref and pref.get("preferred_product"):
+            resolved.append((generic, str(pref["preferred_product"]).strip()))
+        elif pref and pref.get("preferred_brand"):
+            resolved.append((generic, f"{pref['preferred_brand']} {generic}".strip()))
         else:
-            resolved.append(item)
+            resolved.append((generic, generic))
     return resolved
 
 
 # ── Step 1: Search prices via SearchAPI (Google Shopping) ──────────────
-async def search_item_prices(item: str, stores: list[str], location: str) -> list[dict]:
-    """Search Google Shopping for a grocery item, filtered to target stores."""
+async def search_item_prices(item_name: str, query: str, stores: list[str], location: str) -> list[dict]:
+    """Search Google Shopping for a query, filtered to target stores."""
     store_query = " ".join(stores)
     params = {
         "engine": "google_shopping",
-        "q": f"{item} {store_query}",
+        "q": f"{query} {store_query}",
         "gl": "gb",
         "hl": "en",
         "num": 15,
-        "location": location,
+        "location": clean_location(location),
         "api_key": SEARCHAPI_KEY,
     }
-    async with httpx.AsyncClient(timeout=20) as client:
-        response = await client.get(SEARCHAPI_URL, params=params)
-        response.raise_for_status()
-        data = response.json()
+    try:
+        async with httpx.AsyncClient(timeout=20, trust_env=False) as client:
+            response = await client.get(SEARCHAPI_URL, params=params)
+            response.raise_for_status()
+            data = response.json()
+    except httpx.HTTPError as e:
+        logger.warning(f"SearchAPI request failed for {query!r}: {e}")
+        raise HTTPException(status_code=502, detail="Search provider unavailable. Try again later.")
 
     results = []
     for r in data.get("shopping_results", []):
@@ -146,7 +169,7 @@ async def search_item_prices(item: str, stores: list[str], location: str) -> lis
                 break
         if matched_store:
             results.append({
-                "item_query": item,
+                "item_query": item_name,
                 "product": title,
                 "price": float(price),
                 "store": matched_store,
@@ -162,13 +185,17 @@ async def search_item_open(query: str, location: str) -> list[dict]:
         "gl": "gb",
         "hl": "en",
         "num": 20,
-        "location": location,
+        "location": clean_location(location),
         "api_key": SEARCHAPI_KEY,
     }
-    async with httpx.AsyncClient(timeout=20) as client:
-        response = await client.get(SEARCHAPI_URL, params=params)
-        response.raise_for_status()
-        data = response.json()
+    try:
+        async with httpx.AsyncClient(timeout=20, trust_env=False) as client:
+            response = await client.get(SEARCHAPI_URL, params=params)
+            response.raise_for_status()
+            data = response.json()
+    except httpx.HTTPError as e:
+        logger.warning(f"SearchAPI request failed for {query!r}: {e}")
+        raise HTTPException(status_code=502, detail="Search provider unavailable. Try again later.")
 
     results = []
     for r in data.get("shopping_results", []):
@@ -188,8 +215,10 @@ async def search_item_open(query: str, location: str) -> list[dict]:
 
 async def fetch_all_prices(items: list[str], stores: list[str], location: str) -> list[dict]:
     """Fetch prices for all grocery items concurrently."""
-    logger.info("Fetching prices", item_count=len(items) if hasattr(len, '__call__') else len(items))
-    tasks = [search_item_prices(item, stores, location) for item in items]
+    logger.info("Fetching prices (%d items)", len(items))
+    preferences = await load_my_groceries()
+    search_reqs = resolve_search_requests(items, preferences)
+    tasks = [search_item_prices(item_name, query, stores, location) for item_name, query in search_reqs]
     all_results = await asyncio.gather(*tasks, return_exceptions=True)
 
     prices: list[dict] = []
@@ -288,7 +317,7 @@ async def run_deal_check(
     items: list[str],
     stores: list[str],
     location: str,
-    phone_number: str,
+    phone_number: str | None,
 ) -> dict:
     """Fetch prices, analyse deals, persist, and notify. Returns result dict."""
     current_prices = await fetch_all_prices(items, stores, location)
@@ -306,7 +335,8 @@ async def run_deal_check(
         if p.get("item_query", "").lower() in saved_names:
             await append_price_history(p["item_query"], p["price"], p["store"], p["product"])
 
-    await send_whatsapp_notification(summary, phone_number)
+    if phone_number:
+        await send_whatsapp_notification(summary, phone_number)
 
     return {
         "items_tracked":   len(items),
@@ -314,9 +344,13 @@ async def run_deal_check(
         "deals_summary":   summary,
         "is_first_run":    is_first_run,
         "message": (
-            "Deal check complete! WhatsApp alert sent."
+            ("Deal check complete! WhatsApp alert sent." if phone_number else "Deal check complete!")
             if not is_first_run
-            else "First run complete – baseline prices captured. Daily monitoring scheduled at 08:00 UTC."
+            else (
+                "First run complete – baseline prices captured. Daily monitoring scheduled at 08:00 UTC."
+                if phone_number
+                else "First run complete – baseline prices captured."
+            )
         ),
     }
 
@@ -334,19 +368,25 @@ async def scheduled_deal_check() -> None:
     await run_deal_check(DEFAULT_ITEMS, DEFAULT_STORES, DEFAULT_LOCATION, DEFAULT_PHONE_NUMBER)
 
 
+SERVERLESS = bool(os.environ.get("VERCEL"))
+STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    scheduler.add_job(
-        scheduled_deal_check,
-        CronTrigger(hour=8, minute=0),
-        id="daily_deal_check",
-        replace_existing=True,
-    )
-    scheduler.start()
-    logger.info("Scheduler started — daily check at 08:00 UTC")
+    if not SERVERLESS:
+        scheduler.add_job(
+            scheduled_deal_check,
+            CronTrigger(hour=8, minute=0),
+            id="daily_deal_check",
+            replace_existing=True,
+        )
+        scheduler.start()
+        logger.info("Scheduler started — daily check at 08:00 UTC")
     yield
-    scheduler.shutdown()
-    logger.info("Scheduler stopped")
+    if not SERVERLESS:
+        scheduler.shutdown()
+        logger.info("Scheduler stopped")
 
 
 # ── FastAPI app ────────────────────────────────────────────────────────
@@ -357,10 +397,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.get("/", response_class=FileResponse, include_in_schema=False)
+async def serve_ui():
+    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+
 
 # ── Pydantic models ────────────────────────────────────────────────────
 class MonitorRequest(BaseModel):
-    phone_number: str = Field(default="447442801959", example="447442801959")
+    phone_number: str | None = Field(default=None, example="447442801959")
     items:        list[str] = Field(default=DEFAULT_ITEMS)
     stores:       list[str] = Field(default=DEFAULT_STORES)
     location:     str       = Field(default=DEFAULT_LOCATION)
@@ -383,6 +430,12 @@ class GroceryItem(BaseModel):
 
 class AddGroceryRequest(BaseModel):
     item: GroceryItem
+
+
+class AddFavouriteFromSearchRequest(BaseModel):
+    generic_name: str      = Field(..., example="Dairy Milk Chocolate")
+    product:      str      = Field(..., example="Cadbury Dairy Milk Giant Buttons 250g")
+    store:        str | None = Field(None)
 
 
 class RemoveGroceryRequest(BaseModel):
@@ -430,6 +483,24 @@ class SearchResponse(BaseModel):
     results:      list[ProductResult]  = Field(...)
     cheapest:     ProductResult | None = Field(None)
     result_count: int                  = Field(...)
+
+
+class ItemPricesRequest(BaseModel):
+    generic_name: str = Field(..., example="Dairy Milk Chocolate")
+    stores: list[str] = Field(default_factory=lambda: DEFAULT_STORES)
+    location: str = Field(default=DEFAULT_LOCATION)
+
+
+class ItemPriceResult(BaseModel):
+    store: str = Field(...)
+    product: str = Field(...)
+    price: float = Field(...)
+
+
+class ItemPricesResponse(BaseModel):
+    generic_name: str = Field(...)
+    query: str = Field(...)
+    results: list[ItemPriceResult] = Field(default_factory=list)
 
 
 class ShoppingPlanRequest(BaseModel):
@@ -489,6 +560,23 @@ async def add_grocery(request: AddGroceryRequest):
     return MyGroceriesResponse(items=[GroceryItem(**i) for i in updated], count=len(updated))
 
 
+@app.post("/my-groceries/add-from-search", response_model=MyGroceriesResponse)
+async def add_from_search(request: AddFavouriteFromSearchRequest):
+    """
+    Save a favourite from a search result so future price checks target that product.
+    """
+    item = GroceryItem(
+        generic_name=request.generic_name.strip(),
+        preferred_product=request.product.strip(),
+        preferred_store=request.store.strip() if request.store else None,
+    )
+    items_raw = await load_my_groceries()
+    updated = [i for i in items_raw if i["generic_name"].lower() != item.generic_name.lower()]
+    updated.append(item.model_dump())
+    await save_my_groceries(updated)
+    return MyGroceriesResponse(items=[GroceryItem(**i) for i in updated], count=len(updated))
+
+
 @app.post("/my-groceries/remove", response_model=MyGroceriesResponse)
 async def remove_grocery(request: RemoveGroceryRequest):
     """Remove a grocery item from the saved list."""
@@ -535,15 +623,45 @@ async def search_product(request: SearchRequest):
     )
 
 
+@app.post("/item-prices", response_model=ItemPricesResponse)
+async def item_prices(request: ItemPricesRequest):
+    """
+    Fetch current prices for a saved Pantry item across the user's selected stores.
+    Uses any saved product/brand preference when available.
+    """
+    generic = request.generic_name.strip()
+    if not generic:
+        raise HTTPException(status_code=400, detail="generic_name is required")
+
+    prefs = await load_my_groceries()
+    pref_map = {p.get("generic_name", "").strip().lower(): p for p in prefs if p.get("generic_name")}
+    pref = pref_map.get(generic.lower(), {})
+
+    if pref.get("preferred_product"):
+        query = str(pref["preferred_product"]).strip()
+    elif pref.get("preferred_brand"):
+        query = f"{pref['preferred_brand']} {generic}".strip()
+    else:
+        query = generic
+
+    stores = request.stores or DEFAULT_STORES
+    results_raw = await search_item_prices(generic, query, stores, request.location)
+    results_sorted = sorted(results_raw, key=lambda r: r.get("price", 0))
+
+    return ItemPricesResponse(
+        generic_name=generic,
+        query=query,
+        results=[ItemPriceResult(store=r["store"], product=r["product"], price=r["price"]) for r in results_sorted],
+    )
+
+
 @app.post("/shopping-plan", response_model=ShoppingPlanResponse)
 async def shopping_plan(request: ShoppingPlanRequest):
     """
     Submit a shopping list and get an optimised store-by-store plan.
     Balances cheapest prices with fewest store trips.
     """
-    preferences    = await load_my_groceries()
-    search_queries = resolve_search_queries(request.items, preferences)
-    all_prices     = await fetch_all_prices(search_queries, request.stores, request.location)
+    all_prices     = await fetch_all_prices(request.items, request.stores, request.location)
     plan           = await build_shopping_plan(all_prices, request.items, request.stores)
 
     trips = [

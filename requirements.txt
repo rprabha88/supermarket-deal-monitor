@@ -6,3 +6,5 @@ redis==5.2.1
 openai==1.78.1
 twilio==9.4.6
 APScheduler==3.10.4
+aiofiles==24.1.0
+eval_type_backport==0.2.0
