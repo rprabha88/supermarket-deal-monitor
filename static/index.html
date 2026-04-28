@@ -1,0 +1,2856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Grocery Deal Monitor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --green:     #4ade80;
+      --green-dim: #166534;
+      --blue:      #60a5fa;
+      --yellow:    #fbbf24;
+      --red:       #f87171;
+      --text:      #f1f5f9;
+      --muted:     rgba(255,255,255,0.5);
+      --faint:     rgba(255,255,255,0.06);
+      --shell-pad: 14px;
+
+      /* Glass */
+      --glass-bg:     rgba(255,255,255,0.09);
+      --glass-border: rgba(255,255,255,0.16);
+      --glass-hover:  rgba(255,255,255,0.13);
+      --blur:         blur(24px) saturate(160%);
+    }
+
+    html, body { height: 100%; font-family: 'Inter', -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+
+    /* ── Gradient background ─────────────────────────────────── */
+    body {
+      background:
+        radial-gradient(ellipse 80% 60% at 10% 20%,  #0d4f2b 0%, transparent 60%),
+        radial-gradient(ellipse 60% 70% at 90% 80%,  #1e3a8a 0%, transparent 55%),
+        radial-gradient(ellipse 70% 60% at 50% 50%,  #134e4a 0%, transparent 70%),
+        #080f18;
+      background-attachment: fixed;
+      color: var(--text);
+    }
+
+    /* ── Grain overlay (SVG noise) ───────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.38;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+      background-repeat: repeat;
+      background-size: 180px 180px;
+    }
+
+    /* ── App shell ───────────────────────────────────────────── */
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100dvh;
+      max-width: 452px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ── Header ──────────────────────────────────────────────── */
+    header {
+      flex-shrink: 0;
+      padding: 20px 20px 16px;
+      margin: var(--shell-pad) var(--shell-pad) 12px;
+      background: var(--glass-bg);
+      backdrop-filter: var(--blur);
+      -webkit-backdrop-filter: var(--blur);
+      border-bottom: none;
+      border-width: 0px;
+      border-image: none;
+      border-radius: 20px;
+    }
+    .header-inner { display: flex; align-items: center; }
+    .header-logo {
+      width: 38px; height: 38px;
+      background: linear-gradient(135deg, rgba(34, 197, 94, 1) 0%, rgba(22, 163, 74, 1) 100%);
+      color: rgba(241, 245, 249, 0.2);
+      border-radius: 11px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 19px; flex-shrink: 0;
+      box-shadow: 0 4px 16px rgba(34,197,94,0.35);
+    }
+    header h1 {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 60px;
+      font-weight: 900;
+      color: #fff;
+      letter-spacing: -0.02em;
+    }
+    header p  { font-size: 0.72rem; color: var(--muted); margin-top: 1px; }
+
+    /* ── Scroll area ─────────────────────────────────────────── */
+    #scroll-area { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+    /* ── Bottom nav ──────────────────────────────────────────── */
+    nav {
+      flex-shrink: 0;
+      display: flex;
+      margin: 12px var(--shell-pad) calc(env(safe-area-inset-bottom) + 12px);
+      background: var(--glass-bg);
+      backdrop-filter: var(--blur);
+      -webkit-backdrop-filter: var(--blur);
+      border-top: 1px solid var(--glass-border);
+      border-radius: 20px;
+      padding: 6px 4px 6px;
+    }
+    .nav-btn {
+      flex: 1;
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
+      padding: 6px 4px;
+      border: none; background: none; cursor: pointer;
+      color: rgba(255,255,255,0.35);
+      font-size: 0.6rem; font-weight: 600; font-family: inherit;
+      letter-spacing: 0.01em;
+      border-radius: 10px;
+      transition: color 0.15s;
+    }
+    .nav-btn .icon { font-size: 20px; line-height: 1; }
+    .nav-btn.active { color: var(--green); }
+
+    /* ── Tab panels ──────────────────────────────────────────── */
+    .tab { display: none; padding: 16px 14px 28px; }
+    .tab.active { display: block; }
+
+    /* ── Glass card ──────────────────────────────────────────── */
+    .card {
+      background: var(--glass-bg);
+      backdrop-filter: var(--blur);
+      -webkit-backdrop-filter: var(--blur);
+      border: 1px solid var(--glass-border);
+      border-radius: 20px;
+      padding: 18px;
+      margin-bottom: 12px;
+    }
+    .card-green  { border-left: 2px solid rgba(74,222,128,0.6); }
+    .card-blue   { border-left: 2px solid rgba(96,165,250,0.6); }
+    .card-yellow { border-left: 2px solid rgba(251,191,36,0.6); }
+
+    /* ── Labels ──────────────────────────────────────────────── */
+    .label {
+      display: block;
+      font-size: 0.68rem; font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.08em;
+      margin-bottom: 9px;
+    }
+    .field-label {
+      display: block; font-size: 0.8rem; font-weight: 600;
+      color: rgba(255,255,255,0.75); margin-bottom: 5px; margin-top: 4px;
+    }
+
+    /* ── Inputs ──────────────────────────────────────────────── */
+    input[type="text"], input[type="tel"], textarea {
+      width: 100%;
+      padding: 11px 14px;
+      border: 1px solid var(--glass-border);
+      border-radius: 12px;
+      font-size: 0.9rem; font-family: inherit;
+      background: rgba(255,255,255,0.07);
+      color: #fff;
+      transition: border-color 0.15s, background 0.15s;
+      margin-bottom: 12px;
+    }
+    input::placeholder, textarea::placeholder { color: rgba(255,255,255,0.3); }
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: rgba(74,222,128,0.5);
+      background: rgba(255,255,255,0.11);
+    }
+    textarea { resize: vertical; }
+    .hint { font-size: 0.72rem; color: var(--muted); margin-top: -8px; margin-bottom: 12px; }
+
+    /* ── Buttons ─────────────────────────────────────────────── */
+    .btn {
+      display: flex; align-items: center; justify-content: center; gap: 7px;
+      width: 100%; padding: 13px 22px;
+      border: none; border-radius: 100px;
+      font-size: 0.9rem; font-weight: 700; font-family: inherit;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      letter-spacing: -0.01em;
+    }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn:active:not(:disabled) { transform: scale(0.97); }
+
+    .btn-green {
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      color: white;
+      box-shadow: 0 4px 20px rgba(34,197,94,0.3);
+    }
+    .btn-green:hover:not(:disabled) { opacity: 0.9; }
+
+    #search-btn {
+      background: linear-gradient(100.9deg, rgba(34, 197, 94, 1) 0%, rgba(22, 163, 74, 1) 100%);
+      color: rgba(241, 245, 249, 1);
+    }
+
+    .btn-blue {
+      background: linear-gradient(135deg, #3b82f6, #2563eb);
+      color: white;
+      box-shadow: 0 4px 20px rgba(59,130,246,0.3);
+    }
+
+    .btn-glass {
+      background: var(--glass-bg);
+      backdrop-filter: var(--blur);
+      border: 1px solid var(--glass-border);
+      color: var(--text);
+    }
+
+    .btn-sm {
+      width: auto; padding: 5px 13px;
+      font-size: 0.73rem; border-radius: 100px; font-weight: 600;
+    }
+    .btn-danger-sm {
+      background: rgba(248,113,113,0.15);
+      border: 1px solid rgba(248,113,113,0.25);
+      color: var(--red);
+    }
+
+    /* ── Chips / pills ───────────────────────────────────────── */
+    .chips { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 14px; }
+    .chip {
+      padding: 6px 14px;
+      border-radius: 100px;
+      border: 1px solid var(--glass-border);
+      font-size: 0.77rem; font-weight: 600; font-family: inherit;
+      cursor: pointer;
+      background: var(--faint);
+      color: rgba(255,255,255,0.5);
+      transition: all 0.12s;
+    }
+    .chip.on {
+      border-color: rgba(74,222,128,0.5);
+      background: rgba(74,222,128,0.12);
+      color: var(--green);
+    }
+
+    /* ── Store badges ────────────────────────────────────────── */
+    .badge {
+      display: inline-block; padding: 3px 10px;
+      border-radius: 100px; font-size: 0.68rem; font-weight: 700;
+    }
+    .b-tesco      { background: rgba(96,165,250,0.18); color: #93c5fd; border: 1px solid rgba(96,165,250,0.25); }
+    .b-sainsburys { background: rgba(251,191,36,0.18); color: #fcd34d; border: 1px solid rgba(251,191,36,0.25); }
+    .b-iceland    { background: rgba(248,113,113,0.18); color: #fca5a5; border: 1px solid rgba(248,113,113,0.25); }
+    .b-asda       { background: rgba(74,222,128,0.18); color: #86efac; border: 1px solid rgba(74,222,128,0.25); }
+    .b-morrisons  { background: rgba(251,191,36,0.15); color: #fde68a; border: 1px solid rgba(251,191,36,0.2); }
+    .b-waitrose   { background: rgba(52,211,153,0.18); color: #6ee7b7; border: 1px solid rgba(52,211,153,0.25); }
+    .b-default    { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.5); border: 1px solid rgba(255,255,255,0.12); }
+
+    /* ── Price row ───────────────────────────────────────────── */
+    .price-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 11px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+    }
+    .price-row:last-child { border-bottom: none; }
+    .price-left { flex: 1; min-width: 0; }
+    .price-name { font-size: 0.87rem; font-weight: 500; color: rgba(255,255,255,0.9); }
+    .price-sub  { font-size: 0.72rem; color: var(--muted); margin-top: 4px; }
+    .price-val  {
+      font-size: 1.1rem; font-weight: 800; color: var(--green);
+      margin-left: 12px; flex-shrink: 0; letter-spacing: -0.03em;
+    }
+
+    /* ── Best price hero ─────────────────────────────────────── */
+    .best-hero {
+      background: linear-gradient(135deg, rgba(22,101,52,0.7) 0%, rgba(30,64,175,0.5) 100%);
+      backdrop-filter: var(--blur);
+      -webkit-backdrop-filter: var(--blur);
+      border: 1px solid rgba(74,222,128,0.25);
+      border-radius: 20px;
+      padding: 20px;
+      margin-bottom: 12px;
+    }
+    .hero-label { font-size: 0.67rem; font-weight: 700; color: var(--green); text-transform: uppercase; letter-spacing: 0.09em; }
+    .hero-price { font-size: 2.4rem; font-weight: 800; color: #fff; letter-spacing: -0.05em; margin: 5px 0 3px; text-shadow: 0 2px 20px rgba(74,222,128,0.3); }
+    .hero-name  { font-size: 0.88rem; color: rgba(255,255,255,0.75); }
+    .hero-store { margin-top: 12px; }
+
+    /* ── Trip card ───────────────────────────────────────────── */
+    .trip-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 12px;
+    }
+    .trip-store { font-size: 1rem; font-weight: 800; color: #fff; }
+    .trip-sub   { font-size: 0.82rem; font-weight: 700; color: var(--green); }
+
+    /* ── Total bar ───────────────────────────────────────────── */
+    .total-bar {
+      background: linear-gradient(135deg, rgba(22,101,52,0.6), rgba(37,99,235,0.6));
+      backdrop-filter: var(--blur);
+      -webkit-backdrop-filter: var(--blur);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 20px;
+      padding: 18px 20px;
+      display: flex; justify-content: space-between; align-items: center;
+      margin-top: 4px;
+    }
+    .total-label { font-size: 0.8rem; color: rgba(255,255,255,0.7); }
+    .total-val   { font-size: 1.6rem; font-weight: 800; color: #fff; letter-spacing: -0.04em; }
+
+    /* ── Insight ─────────────────────────────────────────────── */
+    .insight {
+      background: rgba(74,222,128,0.1);
+      border: 1px solid rgba(74,222,128,0.2);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      font-size: 0.84rem; color: #86efac; font-weight: 500; line-height: 1.45;
+    }
+
+    /* ── Missing ─────────────────────────────────────────────── */
+    .missing {
+      background: rgba(251,191,36,0.1);
+      border: 1px solid rgba(251,191,36,0.2);
+      border-radius: 9px; padding: 8px 13px;
+      font-size: 0.81rem; color: #fcd34d; margin-bottom: 5px; font-weight: 500;
+    }
+
+    /* ── Grocery row ─────────────────────────────────────────── */
+    .grocery-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 11px 0; border-bottom: 1px solid rgba(255,255,255,0.07);
+      cursor: pointer;
+    }
+    .grocery-row:last-child { border-bottom: none; }
+    .grocery-name { font-size: 0.9rem; font-weight: 600; color: rgba(255,255,255,0.9); }
+    .grocery-meta { font-size: 0.72rem; color: var(--muted); margin-top: 3px; }
+
+    .grocery-details { margin-top: 10px; display: none; }
+    .grocery-details.open { display: block; }
+    .grocery-price-row {
+      display: flex; justify-content: space-between; gap: 12px;
+      padding: 7px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      font-size: 0.82rem;
+      color: rgba(255,255,255,0.75);
+    }
+    .grocery-price-row:last-child { border-bottom: none; }
+    .grocery-price-store { font-weight: 700; color: rgba(255,255,255,0.88); }
+    .grocery-price-val { font-weight: 800; color: var(--green); flex-shrink: 0; }
+
+    /* ── Trend ───────────────────────────────────────────────── */
+    .trend-down { color: var(--green); font-weight: 700; }
+    .trend-up   { color: var(--red);   font-weight: 700; }
+    .trend-stable { color: var(--muted); font-weight: 600; }
+
+    /* ── Stat pills ──────────────────────────────────────────── */
+    .stat-pill {
+      display: inline-flex; align-items: center; gap: 4px;
+      border-radius: 100px; padding: 3px 10px;
+      font-size: 0.7rem; font-weight: 600;
+      margin-top: 7px; margin-right: 5px;
+    }
+    .sp-green { background: rgba(74,222,128,0.12); color: var(--green); border: 1px solid rgba(74,222,128,0.2); }
+    .sp-blue  { background: rgba(96,165,250,0.12); color: var(--blue);  border: 1px solid rgba(96,165,250,0.2); }
+
+    /* ── Empty state ─────────────────────────────────────────── */
+    .empty { text-align: center; padding: 52px 24px; color: var(--muted); }
+    .empty-icon { font-size: 2.8rem; margin-bottom: 10px; }
+    .empty p { font-size: 0.86rem; line-height: 1.6; }
+
+    /* ── Spinner ─────────────────────────────────────────────── */
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2.5px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.65s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Toast ───────────────────────────────────────────────── */
+    .toast {
+      position: fixed; bottom: 96px; left: 50%;
+      transform: translateX(-50%) translateY(8px);
+      background: rgba(15,23,42,0.9);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: white; padding: 10px 18px; border-radius: 100px;
+      font-size: 0.82rem; font-weight: 500; z-index: 999;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.2s, transform 0.2s;
+      white-space: nowrap;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ── My List tab ─────────────────────────────────────────────── */
+    .list-tab-header { margin-bottom: 18px; }
+    .list-tab-title  { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.03em; color: #fff; }
+    .list-tab-sub    { font-size: 0.78rem; color: var(--muted); margin-top: 3px; }
+
+    .list-input-row  { display: flex; gap: 8px; }
+    .list-add-btn    {
+      width: auto; flex-shrink: 0; padding: 11px 18px;
+      border: none; border-radius: 12px;
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      color: white; font-size: 1.1rem; font-weight: 700;
+      cursor: pointer; transition: opacity 0.15s;
+    }
+    .list-add-btn:hover { opacity: 0.88; }
+
+    .list-item {
+      display: flex; align-items: center;
+      padding: 12px 0; gap: 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+    }
+    .list-item:last-child { border-bottom: none; }
+
+    .list-check {
+      width: 24px; height: 24px; flex-shrink: 0;
+      border-radius: 50%; border: 2px solid rgba(255,255,255,0.25);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: all 0.15s; font-size: 12px;
+    }
+    .list-check.checked { background: var(--green); border-color: var(--green); color: #fff; font-weight: 800; }
+
+    .list-name {
+      font-size: 0.9rem; font-weight: 600; color: rgba(255,255,255,0.9);
+    }
+    /* Selected = buying today: full opacity, green left accent */
+    .list-item.selected { border-left: 2px solid rgba(74,222,128,0.5); padding-left: 8px; }
+    /* Unselected = not buying today: faded */
+    .list-item.unselected { opacity: 0.42; }
+
+    .list-store-badge {
+      font-size: 0.66rem; font-weight: 700; padding: 2px 8px;
+      border-radius: 100px; flex-shrink: 0;
+    }
+    .lsb-tesco      { background: rgba(96,165,250,0.15);  color: #93c5fd; border: 1px solid rgba(96,165,250,0.3); }
+    .lsb-sainsburys { background: rgba(251,191,36,0.15);  color: #fcd34d; border: 1px solid rgba(251,191,36,0.3); }
+    .lsb-asda       { background: rgba(74,222,128,0.15);  color: #86efac; border: 1px solid rgba(74,222,128,0.3); }
+    .lsb-morrisons  { background: rgba(251,191,36,0.12);  color: #fde68a; border: 1px solid rgba(251,191,36,0.2); }
+    .lsb-iceland    { background: rgba(248,113,113,0.15); color: #fca5a5; border: 1px solid rgba(248,113,113,0.3); }
+    .lsb-waitrose   { background: rgba(52,211,153,0.15);  color: #6ee7b7; border: 1px solid rgba(52,211,153,0.3); }
+    .lsb-lidl       { background: rgba(251,191,36,0.12);  color: #fde68a; border: 1px solid rgba(251,191,36,0.2); }
+    .lsb-aldi       { background: rgba(96,165,250,0.12);  color: #93c5fd; border: 1px solid rgba(96,165,250,0.2); }
+    .lsb-coop       { background: rgba(248,113,113,0.12); color: #fca5a5; border: 1px solid rgba(248,113,113,0.2); }
+    .lsb-ms         { background: rgba(168,85,247,0.12);  color: #c4b5fd; border: 1px solid rgba(168,85,247,0.2); }
+
+    .list-chevron {
+      font-size: 1rem; color: rgba(255,255,255,0.3); flex-shrink: 0;
+      cursor: pointer; padding: 2px 4px; line-height: 1;
+      transition: transform 0.18s, color 0.15s;
+      user-select: none;
+    }
+    .list-chevron.open { transform: rotate(90deg); color: var(--green); }
+
+    .list-remove {
+      font-size: 0.8rem; color: rgba(255,255,255,0.2);
+      cursor: pointer; flex-shrink: 0; padding: 4px;
+      transition: color 0.15s; user-select: none;
+    }
+    .list-remove:hover { color: var(--red); }
+
+    .store-picker {
+      margin: 0 0 6px 34px;
+      padding: 10px 12px 12px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .store-picker-label { font-size: 0.65rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+    .store-picker .chips { margin-bottom: 0; gap: 6px; }
+    .store-pill {
+      padding: 5px 11px; border-radius: 100px;
+      font-size: 0.73rem; font-weight: 600; font-family: inherit;
+      cursor: pointer; border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.5);
+      transition: all 0.12s;
+    }
+    .store-pill:hover { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.8); }
+    .sp-sel-tesco      { border-color: rgba(96,165,250,0.6);  background: rgba(96,165,250,0.15);  color: #93c5fd !important; }
+    .sp-sel-sainsburys { border-color: rgba(251,191,36,0.6);  background: rgba(251,191,36,0.15);  color: #fcd34d !important; }
+    .sp-sel-asda       { border-color: rgba(74,222,128,0.6);  background: rgba(74,222,128,0.15);  color: #86efac !important; }
+    .sp-sel-morrisons  { border-color: rgba(251,191,36,0.5);  background: rgba(251,191,36,0.12);  color: #fde68a !important; }
+    .sp-sel-iceland    { border-color: rgba(248,113,113,0.6); background: rgba(248,113,113,0.15); color: #fca5a5 !important; }
+    .sp-sel-waitrose   { border-color: rgba(52,211,153,0.6);  background: rgba(52,211,153,0.15);  color: #6ee7b7 !important; }
+    .sp-sel-lidl       { border-color: rgba(251,191,36,0.5);  background: rgba(251,191,36,0.1);   color: #fde68a !important; }
+    .sp-sel-aldi       { border-color: rgba(96,165,250,0.5);  background: rgba(96,165,250,0.1);   color: #93c5fd !important; }
+    .sp-sel-coop       { border-color: rgba(248,113,113,0.5); background: rgba(248,113,113,0.1);  color: #fca5a5 !important; }
+    .sp-sel-ms         { border-color: rgba(168,85,247,0.5);  background: rgba(168,85,247,0.1);   color: #c4b5fd !important; }
+    .sp-sel-none       { border-color: rgba(255,255,255,0.25); background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.75) !important; }
+
+    .basket-divider {
+      font-size: 0.65rem; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.08em;
+      padding: 12px 0 6px; margin-top: 2px;
+      border-top: 1px solid rgba(255,255,255,0.07);
+    }
+
+    .stores-check-section { margin-bottom: 16px; }
+    .stores-check-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+    .store-check-chip {
+      padding: 6px 14px; border-radius: 100px;
+      font-size: 0.77rem; font-weight: 600;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      color: rgba(255,255,255,0.7);
+    }
+    .scc-tesco      { border-color: rgba(96,165,250,0.4);  background: rgba(96,165,250,0.1);  color: #93c5fd; }
+    .scc-sainsburys { border-color: rgba(251,191,36,0.4);  background: rgba(251,191,36,0.1);  color: #fcd34d; }
+    .scc-asda       { border-color: rgba(74,222,128,0.4);  background: rgba(74,222,128,0.1);  color: #86efac; }
+    .scc-morrisons  { border-color: rgba(251,191,36,0.35); background: rgba(251,191,36,0.08); color: #fde68a; }
+    .scc-iceland    { border-color: rgba(248,113,113,0.4); background: rgba(248,113,113,0.1); color: #fca5a5; }
+    .scc-waitrose   { border-color: rgba(52,211,153,0.4);  background: rgba(52,211,153,0.1);  color: #6ee7b7; }
+    .scc-lidl       { border-color: rgba(251,191,36,0.35); background: rgba(251,191,36,0.08); color: #fde68a; }
+    .scc-aldi       { border-color: rgba(96,165,250,0.35); background: rgba(96,165,250,0.08); color: #93c5fd; }
+
+    /* ── Smart Plan tab ──────────────────────────────────────────── */
+    .card-red { border-left: 2px solid rgba(248,113,113,0.6); }
+
+    .mode-toggle {
+      display: flex;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--glass-border);
+      border-radius: 12px;
+      padding: 3px; gap: 3px;
+      margin-bottom: 16px;
+    }
+    .mode-btn {
+      flex: 1; padding: 9px 4px;
+      border: none; border-radius: 9px;
+      font-size: 0.79rem; font-weight: 600; font-family: inherit;
+      cursor: pointer; color: var(--muted); background: none;
+      transition: all 0.15s;
+    }
+    .mode-btn.active { background: rgba(255,255,255,0.13); color: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.25); }
+
+    .trip-item-row {
+      display: flex; align-items: center;
+      padding: 10px 0; gap: 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      transition: opacity 0.2s;
+    }
+    .trip-item-row.ticked { opacity: 0.4; }
+
+    .trip-check {
+      width: 22px; height: 22px; flex-shrink: 0;
+      border-radius: 50%; border: 2px solid rgba(255,255,255,0.2);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: all 0.15s;
+      font-size: 11px; font-weight: 800; color: #fff;
+    }
+    .trip-check.checked { background: var(--green); border-color: var(--green); }
+
+    .trip-item-name { font-size: 0.87rem; font-weight: 600; color: rgba(255,255,255,0.9); }
+    .trip-item-name.ticked { text-decoration: line-through; }
+    .trip-item-price { font-size: 0.87rem; font-weight: 700; color: var(--green); flex-shrink: 0; }
+    .trip-item-price.ticked { color: var(--muted) !important; }
+
+    .record-spend-card {
+      margin-top: 12px; padding: 14px;
+      background: rgba(74,222,128,0.08);
+      border: 1px solid rgba(74,222,128,0.22);
+      border-radius: 14px;
+    }
+    .record-spend-title { font-size: 0.9rem; font-weight: 700; color: #fff; margin-bottom: 3px; }
+    .record-spend-sub   { font-size: 0.78rem; color: var(--muted); margin-bottom: 10px; line-height: 1.4; }
+    .record-spend-row   { display: flex; gap: 7px; align-items: center; }
+    .record-spend-wrap  { position: relative; flex: 1; }
+    .record-spend-sym   {
+      position: absolute; left: 11px; top: 50%; transform: translateY(-50%);
+      font-size: 0.9rem; color: rgba(255,255,255,0.5); font-weight: 600; pointer-events: none;
+    }
+    .record-spend-input {
+      width: 100%; padding: 9px 11px 9px 24px;
+      border: 1px solid var(--glass-border); border-radius: 10px;
+      font-size: 0.9rem; font-family: inherit;
+      background: rgba(255,255,255,0.08); color: #fff; margin-bottom: 0;
+    }
+    .record-spend-input:focus { outline: none; border-color: rgba(74,222,128,0.5); }
+
+    .plan-loading { text-align: center; padding: 48px 24px; }
+    .plan-loading .spinner { width: 32px; height: 32px; margin: 0 auto 14px; }
+    .plan-loading p { font-size: 0.86rem; color: var(--muted); }
+
+    /* ── Price Tracker tab ───────────────────────────────────────── */
+    .tracker-toggle { margin-bottom: 14px; }
+
+    .filter-row { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 14px; }
+    .filter-pill {
+      padding: 5px 14px; border-radius: 100px;
+      font-size: 0.75rem; font-weight: 600; font-family: inherit;
+      cursor: pointer; border: 1px solid var(--glass-border);
+      background: var(--faint); color: rgba(255,255,255,0.45);
+      transition: all 0.12s;
+    }
+    .filter-pill.active {
+      border-color: rgba(74,222,128,0.5);
+      background: rgba(74,222,128,0.12);
+      color: var(--green);
+    }
+
+    .result-row {
+      display: flex; align-items: center;
+      padding: 11px 0; gap: 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+    }
+    .result-row:last-child { border-bottom: none; }
+    .result-left  { flex: 1; min-width: 0; }
+    .result-name  { font-size: 0.87rem; font-weight: 600; color: rgba(255,255,255,0.9); }
+    .result-meta  { font-size: 0.72rem; color: var(--muted); margin-top: 3px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .result-price { font-size: 1rem; font-weight: 800; color: var(--green); flex-shrink: 0; margin-right: 6px; }
+
+    .track-btn {
+      width: auto; flex-shrink: 0;
+      padding: 5px 12px; border-radius: 100px;
+      font-size: 0.72rem; font-weight: 700; font-family: inherit;
+      cursor: pointer;
+      border: 1px solid rgba(74,222,128,0.35);
+      background: rgba(74,222,128,0.1); color: var(--green);
+      transition: all 0.15s;
+    }
+    .track-btn:hover  { background: rgba(74,222,128,0.2); }
+    .track-btn.tracked { border-color: rgba(255,255,255,0.15); background: rgba(255,255,255,0.06); color: var(--muted); cursor: default; }
+
+    .loyalty-tag {
+      display: inline-flex; align-items: center; gap: 3px;
+      font-size: 0.65rem; font-weight: 700; padding: 1px 7px;
+      border-radius: 100px;
+      background: rgba(251,191,36,0.15); color: #fcd34d;
+      border: 1px solid rgba(251,191,36,0.25);
+    }
+
+    .pinned-item-row {
+      display: flex; align-items: center; gap: 12px;
+      cursor: pointer; padding: 2px 0;
+    }
+    .pinned-item-info  { flex: 1; min-width: 0; }
+    .pinned-item-name  { font-size: 0.9rem; font-weight: 700; color: #fff; }
+    .pinned-item-sub   { font-size: 0.73rem; color: var(--muted); margin-top: 3px; }
+    .pinned-item-chev  { font-size: 1rem; color: rgba(255,255,255,0.3); transition: transform 0.18s; flex-shrink: 0; }
+    .pinned-item-chev.open { transform: rotate(90deg); color: var(--green); }
+    .pinned-chart-wrap { margin-top: 14px; }
+
+    /* ── Me tab ─────────────────────────────────────────────────── */
+    .accordion { overflow: hidden; }
+    .acc-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 15px 18px; cursor: pointer;
+      font-size: 0.9rem; font-weight: 700; color: rgba(255,255,255,0.88);
+      transition: background 0.15s; border-radius: 20px;
+    }
+    .acc-header:hover { background: rgba(255,255,255,0.04); }
+    .acc-chev {
+      font-size: 1rem; color: rgba(255,255,255,0.3);
+      transition: transform 0.18s, color 0.15s; flex-shrink: 0;
+    }
+    .acc-chev.open { transform: rotate(90deg); color: var(--green); }
+    .acc-body { padding: 0 18px 16px; }
+
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 11px 0; border-bottom: 1px solid rgba(255,255,255,0.07);
+    }
+    .toggle-row:last-child { border-bottom: none; }
+    .toggle-label { font-size: 0.86rem; font-weight: 600; color: rgba(255,255,255,0.85); }
+    .toggle-sub   { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+
+    .toggle-sw { position: relative; width: 46px; height: 26px; flex-shrink: 0; display: inline-block; }
+    .toggle-sw input { opacity: 0; width: 0; height: 0; }
+    .toggle-track {
+      position: absolute; inset: 0; cursor: pointer;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 13px; transition: background 0.2s, border-color 0.2s;
+    }
+    .toggle-track::before {
+      content: ''; position: absolute;
+      width: 20px; height: 20px; border-radius: 50%;
+      left: 2px; top: 2px; background: rgba(255,255,255,0.5);
+      transition: transform 0.2s, background 0.2s;
+    }
+    .toggle-sw input:checked + .toggle-track { background: rgba(74,222,128,0.3); border-color: rgba(74,222,128,0.45); }
+    .toggle-sw input:checked + .toggle-track::before { transform: translateX(20px); background: var(--green); }
+
+    .spend-row {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.07);
+    }
+    .spend-row:last-child { border-bottom: none; }
+    .spend-amount { font-size: 1.05rem; font-weight: 800; color: #fff; letter-spacing: -0.03em; }
+    .spend-meta   { font-size: 0.71rem; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+    .spend-pos    { color: var(--green); font-weight: 700; font-size: 0.78rem; }
+    .spend-neg    { color: var(--red);   font-weight: 700; font-size: 0.78rem; }
+
+    /* ── Deal result ─────────────────────────────────────────── */
+    .deal-result {
+      background: rgba(74,222,128,0.08);
+      border: 1px solid rgba(74,222,128,0.18);
+      border-radius: 14px; padding: 14px; margin-top: 12px;
+    }
+    .deal-result strong { font-size: 0.84rem; color: #86efac; display: block; margin-bottom: 6px; }
+    .deal-result p { font-size: 0.79rem; color: rgba(255,255,255,0.6); line-height: 1.55; }
+
+    /* ── Divider ─────────────────────────────────────────────── */
+    .divider { height: 1px; background: rgba(255,255,255,0.07); margin: 2px 0 14px; }
+
+    /* ── Save button on results ──────────────────────────────── */
+    .btn-save {
+      width: auto; padding: 5px 12px;
+      font-size: 0.72rem; border-radius: 100px; font-weight: 600;
+      background: rgba(74,222,128,0.12);
+      border: 1px solid rgba(74,222,128,0.25);
+      color: var(--green);
+      cursor: pointer; font-family: inherit;
+      transition: all 0.15s; flex-shrink: 0; margin-left: 10px;
+    }
+    .btn-save:hover { background: rgba(74,222,128,0.22); }
+    .btn-save.saved { background: rgba(74,222,128,0.25); color: var(--green); cursor: default; }
+
+    /* ── Modal overlay ───────────────────────────────────────── */
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      display: flex; align-items: flex-end; justify-content: center;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.2s;
+    }
+    .modal-overlay.open { opacity: 1; pointer-events: all; }
+
+    .modal-sheet {
+      background: rgba(15,28,20,0.85);
+      backdrop-filter: blur(32px) saturate(180%);
+      -webkit-backdrop-filter: blur(32px) saturate(180%);
+      border: 1px solid var(--glass-border);
+      border-radius: 24px 24px 0 0;
+      padding: 24px 20px 36px;
+      width: 100%; max-width: 480px;
+      transform: translateY(20px);
+      transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1);
+    }
+    .modal-overlay.open .modal-sheet { transform: translateY(0); }
+
+    .modal-handle {
+      width: 36px; height: 4px; border-radius: 2px;
+      background: rgba(255,255,255,0.2);
+      margin: 0 auto 20px;
+    }
+    .modal-title { font-size: 1rem; font-weight: 800; color: #fff; margin-bottom: 4px; }
+    .modal-sub   { font-size: 0.78rem; color: var(--muted); margin-bottom: 16px; line-height: 1.4; }
+    .modal-context {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--glass-border);
+      border-radius: 10px; padding: 10px 13px; margin-bottom: 14px;
+    }
+    .modal-context-product { font-size: 0.82rem; color: rgba(255,255,255,0.8); font-weight: 500; }
+
+    .modal-actions { display: flex; gap: 9px; margin-top: 4px; }
+    .modal-actions .btn { flex: 1; }
+
+    /* ── Location autocomplete ───────────────────────────────── */
+    .loc-wrap { position: relative; margin-bottom: 12px; }
+    .loc-wrap input { margin-bottom: 0; }
+    .loc-suggestions {
+      position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+      background: rgba(12,24,18,0.95);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--glass-border);
+      border-radius: 14px;
+      overflow: hidden;
+      z-index: 100;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      display: none;
+    }
+    .loc-suggestions.open { display: block; }
+    .loc-suggestion {
+      padding: 11px 14px;
+      font-size: 0.84rem;
+      color: rgba(255,255,255,0.8);
+      cursor: pointer;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      transition: background 0.1s;
+      line-height: 1.3;
+    }
+    .loc-suggestion:last-child { border-bottom: none; }
+    .loc-suggestion:hover, .loc-suggestion.active { background: rgba(74,222,128,0.12); color: var(--green); }
+    .loc-suggestion .loc-main { font-weight: 600; }
+    .loc-suggestion .loc-sub  { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <div class="header-inner">
+      <div>
+        <h1>Grocery Deals</h1>
+        <p>Best prices at UK supermarkets</p>
+      </div>
+    </div>
+  </header>
+
+  <div id="scroll-area">
+
+    <!-- ── TAB 1: MY LIST ── -->
+    <div id="tab-mylist" class="tab active">
+
+      <!-- Header -->
+      <div class="list-tab-header">
+        <div class="list-tab-title">My List</div>
+        <div class="list-tab-sub" id="mylist-subtitle">Loading…</div>
+      </div>
+
+      <!-- Smart input card -->
+      <div class="card" style="padding:14px;margin-bottom:12px">
+        <div class="list-input-row">
+          <input type="text" id="mylist-input" placeholder="Add item… or paste a list"
+                 style="flex:1;margin-bottom:0"
+                 onkeydown="onListInputKey(event)" onpaste="onListPaste(event)">
+          <button class="list-add-btn" onclick="addListItem()">+</button>
+        </div>
+      </div>
+
+      <!-- Batch paste preview -->
+      <div id="mylist-batch" class="card" style="display:none;margin-bottom:12px">
+        <span class="label">ADDING <span id="mylist-batch-count">0</span> ITEMS</span>
+        <div id="mylist-batch-list" style="margin-bottom:12px"></div>
+        <div style="display:flex;gap:9px">
+          <button class="btn btn-glass" style="flex:1" onclick="cancelBatch()">Cancel</button>
+          <button class="btn btn-green" style="flex:1" id="mylist-batch-confirm-btn" onclick="confirmBatch()">Add all</button>
+        </div>
+      </div>
+
+      <!-- Items card -->
+      <div class="card" id="mylist-items-card" style="margin-bottom:12px">
+        <div id="mylist-items">
+          <div class="empty"><div class="empty-icon">🛒</div><p>Your list is empty.<br>Add items above to get started.</p></div>
+        </div>
+      </div>
+
+      <!-- Stores to check -->
+      <div class="stores-check-section" id="mylist-stores-section" style="display:none">
+        <span class="label">STORES TO CHECK</span>
+        <div class="stores-check-chips" id="mylist-stores-chips"></div>
+      </div>
+
+      <!-- CTA -->
+      <button class="btn btn-green" id="mylist-plan-btn" onclick="goToSmartPlan()" style="margin-bottom:8px" disabled>
+        Get Smart Plan →
+      </button>
+      <div style="text-align:center;margin-top:4px">
+        <button onclick="clearListSelection()" style="background:none;border:none;color:var(--muted);font-size:0.75rem;font-family:inherit;cursor:pointer;padding:4px 8px">
+          Clear selection
+        </button>
+      </div>
+
+    </div>
+
+    <!-- ── TAB 2: SMART PLAN ── -->
+    <div id="tab-smartplan" class="tab">
+
+      <!-- Header -->
+      <div class="list-tab-header">
+        <div class="list-tab-title">Smart Plan</div>
+        <div class="list-tab-sub" id="smartplan-subtitle">Your shopping route</div>
+      </div>
+
+      <!-- Loading -->
+      <div id="plan-loading" class="plan-loading" style="display:none">
+        <div class="spinner"></div>
+        <p>Building your plan…</p>
+      </div>
+
+      <!-- Empty / entry state -->
+      <div id="plan-empty-state">
+        <div class="card" style="text-align:center;padding:36px 20px">
+          <div style="font-size:2.6rem;margin-bottom:14px">🗺️</div>
+          <div style="font-size:1rem;font-weight:700;color:#fff;margin-bottom:6px">No plan yet</div>
+          <div style="font-size:0.82rem;color:var(--muted);margin-bottom:22px;line-height:1.55">
+            Find the cheapest route for your<br>unchecked items
+          </div>
+          <button class="btn btn-green" onclick="generatePlan()">Build Plan</button>
+        </div>
+      </div>
+
+      <!-- Plan content -->
+      <div id="plan-content" style="display:none">
+
+        <!-- Savings hero -->
+        <div class="best-hero" id="plan-hero" style="margin-bottom:12px"></div>
+
+        <!-- Plan curve -->
+        <div id="plan-curve" style="margin-bottom:12px"></div>
+
+        <!-- Mode toggle -->
+        <div class="mode-toggle">
+          <button class="mode-btn active" data-mode="cheapest" onclick="setPlanMode('cheapest')">💰 Cheapest</button>
+          <button class="mode-btn" data-mode="fewest" onclick="setPlanMode('fewest')">📍 Fewest Stops</button>
+        </div>
+
+        <!-- Trip cards -->
+        <div id="plan-trips"></div>
+
+        <!-- Missing items -->
+        <div id="plan-missing"></div>
+
+        <!-- Regenerate -->
+        <button class="btn btn-glass" onclick="generatePlan()" style="margin-top:4px;margin-bottom:8px">↻ Regenerate Plan</button>
+
+      </div>
+
+    </div>
+
+    <!-- ── TAB 3: PRICE TRACKER ── -->
+    <div id="tab-tracker" class="tab">
+
+      <!-- Header -->
+      <div class="list-tab-header">
+        <div class="list-tab-title">Price Tracker</div>
+        <div class="list-tab-sub" id="tracker-subtitle">Search prices or view pinned items</div>
+      </div>
+
+      <!-- View toggle -->
+      <div class="mode-toggle tracker-toggle">
+        <button class="mode-btn active" data-view="search" onclick="setTrackerView('search')">🔍 Search</button>
+        <button class="mode-btn" data-view="pinned" onclick="setTrackerView('pinned')">📌 Pinned</button>
+      </div>
+
+      <!-- ── Search view ── -->
+      <div id="tracker-search-view">
+        <div class="card" style="padding:14px;margin-bottom:12px">
+          <div class="list-input-row">
+            <input type="text" id="tracker-input" placeholder="Search any product…"
+                   style="flex:1;margin-bottom:0"
+                   onkeydown="onTrackerKey(event)">
+            <button class="list-add-btn" id="tracker-search-btn" onclick="doTrackerSearch()">→</button>
+          </div>
+        </div>
+
+        <!-- Filter pills (shown after results load) -->
+        <div id="tracker-filter-row" class="filter-row" style="display:none">
+          <button class="filter-pill active" data-filter="all"      onclick="setTrackerFilter('all')">All</button>
+          <button class="filter-pill"        data-filter="instore"  onclick="setTrackerFilter('instore')">In-store</button>
+          <button class="filter-pill"        data-filter="online"   onclick="setTrackerFilter('online')">Online only</button>
+        </div>
+
+        <div id="tracker-search-loading" class="plan-loading" style="display:none">
+          <div class="spinner"></div><p>Searching…</p>
+        </div>
+        <div id="tracker-results"></div>
+      </div>
+
+      <!-- ── Pinned view ── -->
+      <div id="tracker-pinned-view" style="display:none">
+        <div id="tracker-pinned-loading" class="plan-loading" style="display:none">
+          <div class="spinner"></div><p>Loading…</p>
+        </div>
+        <div id="tracker-pinned-list"></div>
+      </div>
+
+    </div>
+
+    <!-- ── TAB 4: ME ── -->
+    <div id="tab-me" class="tab">
+
+      <!-- Header -->
+      <div class="list-tab-header">
+        <div class="list-tab-title">Me</div>
+        <div class="list-tab-sub">Preferences &amp; history</div>
+      </div>
+
+      <!-- Savings hero -->
+      <div class="best-hero" style="margin-bottom:14px">
+        <div class="hero-label">TOTAL SAVED</div>
+        <div class="hero-price" id="me-saved-amount">£0.00</div>
+        <div class="hero-name" id="me-saved-sub">No trips recorded yet</div>
+      </div>
+
+      <!-- 1. Spending History -->
+      <div class="card accordion" style="padding:0;margin-bottom:10px">
+        <div class="acc-header" onclick="toggleAcc('spending')">
+          <span>📊&nbsp; Spending History</span>
+          <span class="acc-chev" id="chev-spending">›</span>
+        </div>
+        <div class="acc-body" id="body-spending" style="display:none">
+          <div id="me-spend-history"></div>
+        </div>
+      </div>
+
+      <!-- 2. Item Preferences -->
+      <div class="card accordion" style="padding:0;margin-bottom:10px">
+        <div class="acc-header" onclick="toggleAcc('itemprefs')">
+          <span>🏷&nbsp; Item Preferences</span>
+          <span class="acc-chev" id="chev-itemprefs">›</span>
+        </div>
+        <div class="acc-body" id="body-itemprefs" style="display:none">
+          <div id="me-item-prefs"></div>
+        </div>
+      </div>
+
+      <!-- 3. Loyalty Cards -->
+      <div class="card accordion" style="padding:0;margin-bottom:10px">
+        <div class="acc-header" onclick="toggleAcc('loyalty')">
+          <span>💳&nbsp; Loyalty Cards</span>
+          <span class="acc-chev" id="chev-loyalty">›</span>
+        </div>
+        <div class="acc-body" id="body-loyalty" style="display:none">
+          <div class="toggle-row">
+            <div><div class="toggle-label">Tesco Clubcard</div><div class="toggle-sub">Unlock Clubcard prices</div></div>
+            <label class="toggle-sw"><input type="checkbox" id="lc-clubcard"><span class="toggle-track"></span></label>
+          </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">Sainsbury's Nectar</div><div class="toggle-sub">Personalised offers</div></div>
+            <label class="toggle-sw"><input type="checkbox" id="lc-nectar"><span class="toggle-track"></span></label>
+          </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">Morrisons More Card</div><div class="toggle-sub">Points &amp; member prices</div></div>
+            <label class="toggle-sw"><input type="checkbox" id="lc-more"><span class="toggle-track"></span></label>
+          </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">Waitrose myWaitrose</div><div class="toggle-sub">Free coffee &amp; exclusive offers</div></div>
+            <label class="toggle-sw"><input type="checkbox" id="lc-waitrose"><span class="toggle-track"></span></label>
+          </div>
+          <div class="toggle-row">
+            <div><div class="toggle-label">Co-op Membership</div><div class="toggle-sub">Member prices &amp; rewards</div></div>
+            <label class="toggle-sw"><input type="checkbox" id="lc-coop"><span class="toggle-track"></span></label>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Location & Stores -->
+      <div class="card accordion" style="padding:0;margin-bottom:10px">
+        <div class="acc-header" onclick="toggleAcc('location')">
+          <span>📍&nbsp; Location &amp; Stores</span>
+          <span class="acc-chev" id="chev-location">›</span>
+        </div>
+        <div class="acc-body" id="body-location" style="display:none">
+          <span class="field-label">Your location</span>
+          <div class="loc-wrap">
+            <input type="text" id="me-location" placeholder="e.g. Kensington, London" style="margin-bottom:0">
+            <div class="loc-suggestions" id="me-location-suggestions"></div>
+          </div>
+          <button class="btn btn-glass" id="me-detect-btn" onclick="detectMeLocation()"
+                  style="margin-top:8px;margin-bottom:16px;padding:9px 16px;width:auto;font-size:0.8rem">
+            📍 Detect my location
+          </button>
+          <span class="field-label">My stores</span>
+          <div class="chips" id="me-chips" style="margin-bottom:4px"></div>
+        </div>
+      </div>
+
+      <!-- 5. WhatsApp Alerts -->
+      <div class="card accordion" style="padding:0;margin-bottom:10px">
+        <div class="acc-header" onclick="toggleAcc('whatsapp')">
+          <span>💬&nbsp; WhatsApp Alerts</span>
+          <span class="acc-chev" id="chev-whatsapp">›</span>
+        </div>
+        <div class="acc-body" id="body-whatsapp" style="display:none">
+          <div style="text-align:center;padding:12px 0 4px;font-size:0.82rem;color:var(--muted);line-height:1.55">
+            🚧 Coming soon — WhatsApp deal alerts are in development.
+          </div>
+        </div>
+      </div>
+
+      <!-- 6. Receipt Scanner (placeholder) -->
+      <div class="card accordion" style="padding:0;margin-bottom:16px">
+        <div class="acc-header" onclick="toggleAcc('receipt')">
+          <span>🧾&nbsp; Receipt Scanner</span>
+          <span class="acc-chev" id="chev-receipt">›</span>
+        </div>
+        <div class="acc-body" id="body-receipt" style="display:none">
+          <div style="text-align:center;padding:20px 0 8px">
+            <div style="font-size:2.4rem;margin-bottom:10px">📷</div>
+            <div style="font-size:0.9rem;font-weight:700;color:#fff;margin-bottom:6px">Coming soon</div>
+            <div style="font-size:0.78rem;color:var(--muted);line-height:1.55">
+              Snap a receipt to automatically log<br>your spend and track item prices
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Save -->
+      <button class="btn btn-green" onclick="saveMeTab()" style="margin-bottom:8px">Save preferences</button>
+
+    </div>
+
+
+  </div><!-- /scroll-area -->
+
+  <nav>
+    <button class="nav-btn active" onclick="showTab('mylist',this)"><span class="icon">📝</span>My List</button>
+    <button class="nav-btn" onclick="showTab('smartplan',this)"><span class="icon">🗺️</span>Smart Plan</button>
+    <button class="nav-btn" onclick="showTab('tracker',this)"><span class="icon">📈</span>Prices</button>
+    <button class="nav-btn" onclick="showTab('me',this)"><span class="icon">👤</span>Me</button>
+  </nav>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<!-- ── Save to favourites modal ── -->
+<div class="modal-overlay" id="save-modal" onclick="onModalBgClick(event)">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+<div class="modal-title">Add to My List</div>
+    <div class="modal-sub">What's the generic name for this item?<br>This is how you'll track it (e.g. "Dairy Milk Chocolate").</div>
+
+    <div class="modal-context" id="modal-context">
+      <div class="modal-context-product" id="modal-product"></div>
+    </div>
+
+    <span class="field-label">Generic name</span>
+    <input type="text" id="modal-name" placeholder="e.g. Dairy Milk Chocolate" style="margin-bottom:16px" />
+
+    <div class="modal-actions">
+      <button class="btn btn-glass" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-green" id="modal-save-btn" onclick="confirmSave()">Save 🥫</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const ALL_STORES     = ['Tesco','Sainsburys','Asda','Morrisons','Iceland','Waitrose','Lidl','Aldi','Co-op','M&S Food'];
+const DEFAULT_STORES = ['Tesco','Sainsburys','Asda'];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Canonical data structures
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * ShoppingItem — one item on the user's master grocery list.
+ * @param {string} name
+ * @param {object|null} pref  e.g. { store: 'Tesco', brand: 'Oatly' }
+ */
+function makeShoppingItem(name, pref = null) {
+  return {
+    id:   crypto.randomUUID(),
+    name: String(name).trim(),
+    done: false,            // ticked = selected for today's session
+    pref: pref ? { store: pref.store || null, brand: pref.brand || null, product: pref.product || null } : null,
+  };
+}
+
+/**
+ * StoreSession — one completed (or in-progress) shopping trip.
+ * @param {string[]} stores   stores visited
+ * @param {string[]} items    item names included
+ * @param {number}   total    estimated total (£)
+ */
+function makeStoreSession(stores, items, total) {
+  return {
+    id:     crypto.randomUUID(),
+    date:   new Date().toISOString().split('T')[0],
+    stores: [...stores],
+    items:  [...items],
+    total,         // estimated cost (£)
+    spent:  null,  // actual amount recorded by user (£), null = not yet logged
+    saved:  null,  // computed: total - spent (£), null until spent recorded
+  };
+}
+
+/**
+ * TrackedItem — an item being watched in the Price Tracker.
+ * @param {string} name   generic name
+ * @param {string} store
+ * @param {number} price  current price
+ * @param {Array}  history  [{date, price, store, product}]
+ */
+function makeTrackedItem(name, store, price, history = []) {
+  const prices = history.map(h => h.price);
+  const low    = prices.length ? Math.min(...prices) : price;
+  const prev   = prices.length >= 2 ? prices[prices.length - 2] : null;
+  const trend  = prev === null ? 'new'
+               : price < prev ? 'down'
+               : price > prev ? 'up'
+               : 'stable';
+  const delta  = prev !== null ? +(price - prev).toFixed(2) : null;
+  return {
+    id:      crypto.randomUUID(),
+    name:    String(name).trim(),
+    store:   String(store).trim(),
+    price,
+    low,
+    trend,
+    delta,
+    history: [...history],
+  };
+}
+
+/**
+ * ItemPreference — a stored store/brand preference for a named item.
+ * @param {string} item
+ * @param {string|null} store
+ * @param {string|null} note
+ */
+function makeItemPreference(item, store = null, note = null) {
+  return {
+    id:    crypto.randomUUID(),
+    item:  String(item).trim(),
+    store: store ? String(store).trim() : null,
+    note:  note  ? String(note).trim()  : null,
+  };
+}
+
+/**
+ * UserSettings — persisted user configuration.
+ * Loaded from / saved to localStorage key 'gdm_settings'.
+ */
+function makeUserSettings(overrides = {}) {
+  return {
+    location:      overrides.location      || '',
+    nearbyStores:  overrides.nearbyStores  || [...DEFAULT_STORES],
+    loyaltyCards:  overrides.loyaltyCards  || {},   // { clubcard: true, nectar: false, … }
+    whatsappNumber: overrides.whatsappNumber || '',
+    defaultStores: overrides.defaultStores || [...DEFAULT_STORES],
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AppState — single source of truth, shared across all tabs.
+// ─────────────────────────────────────────────────────────────────────────────
+const AppState = (() => {
+  const LS_SETTINGS  = 'gdm_settings';
+  const LS_SESSIONS  = 'gdm_sessions';
+  const LS_TRACKED   = 'gdm_tracked';
+  const LS_PREFS_OLD = 'gdm_prefs';         // legacy key — migrated on first load
+
+  function _load(key, fallback) {
+    try { return JSON.parse(localStorage.getItem(key) || 'null') || fallback; }
+    catch { return fallback; }
+  }
+  function _save(key, val) {
+    localStorage.setItem(key, JSON.stringify(val));
+  }
+
+  // ── Settings (UserSettings) ─────────────────────────────────────────────
+  let _settings = null;
+  function _loadSettings() {
+    const raw = _load(LS_SETTINGS, null);
+    if (raw) return makeUserSettings(raw);
+    // Migrate from legacy gdm_prefs
+    const old = _load(LS_PREFS_OLD, {});
+    return makeUserSettings({
+      location:       old.location      || '',
+      nearbyStores:   old.stores        || [...DEFAULT_STORES],
+      loyaltyCards:   old.loyalty_cards || {},
+      whatsappNumber: old.phone         || '',
+      defaultStores:  old.stores        || [...DEFAULT_STORES],
+    });
+  }
+
+  // ── Store Sessions (StoreSession[]) ────────────────────────────────────
+  let _sessions = null;
+  function _loadSessions() {
+    const raw = _load(LS_SESSIONS, null);
+    if (raw) return raw;
+    // Migrate from legacy gdm_spend_history
+    const old = _load('gdm_spend_history', []);
+    return old.map(h => ({
+      ...makeStoreSession(
+        h.store ? [h.store] : [],
+        h.items || [],
+        h.estimated || 0,
+      ),
+      date:  h.date || new Date().toISOString().split('T')[0],
+      spent: h.amount   != null ? h.amount   : null,
+      saved: h.estimated != null && h.amount != null
+             ? +(h.estimated - h.amount).toFixed(2)
+             : null,
+    }));
+  }
+
+  // ── Tracked Items (TrackedItem[]) ───────────────────────────────────────
+  let _tracked = null;
+  function _loadTracked() {
+    return _load(LS_TRACKED, []);
+  }
+
+  return {
+    // ── Accessors ───────────────────────────────────────────────────────
+    get settings()  { return _settings; },
+    get sessions()  { return _sessions; },
+    get tracked()   { return _tracked; },
+
+    // ── Initialise (call once on DOMContentLoaded) ──────────────────────
+    init() {
+      _settings = _loadSettings();
+      _sessions = _loadSessions();
+      _tracked  = _loadTracked();
+    },
+
+    // ── Settings ────────────────────────────────────────────────────────
+    saveSettings(patch) {
+      Object.assign(_settings, patch);
+      _save(LS_SETTINGS, _settings);
+      // Keep legacy gdm_prefs in sync so existing code still reads it
+      const legacy = _load(LS_PREFS_OLD, {});
+      _save(LS_PREFS_OLD, {
+        ...legacy,
+        location:      _settings.location,
+        stores:        _settings.defaultStores,
+        loyalty_cards: _settings.loyaltyCards,
+        phone:         _settings.whatsappNumber,
+      });
+    },
+
+    // ── Sessions ─────────────────────────────────────────────────────────
+    addSession(session) {
+      _sessions.unshift(session);
+      _sessions = _sessions.slice(0, 100);
+      _save(LS_SESSIONS, _sessions);
+      // Keep legacy gdm_spend_history in sync
+      _save('gdm_spend_history', _sessions.slice(0, 50).map(s => ({
+        date:        s.date,
+        store:       s.stores[0] || '',
+        amount:      s.spent,
+        estimated:   s.total,
+        items_count: s.items.length,
+        items:       s.items,
+      })));
+    },
+    recordSpend(sessionId, spent) {
+      const s = _sessions.find(s => s.id === sessionId);
+      if (!s) return;
+      s.spent = spent;
+      s.saved = s.total != null ? +(s.total - spent).toFixed(2) : null;
+      _save(LS_SESSIONS, _sessions);
+      _save('gdm_spend_history', _sessions.slice(0, 50).map(s => ({
+        date:        s.date,
+        store:       s.stores[0] || '',
+        amount:      s.spent,
+        estimated:   s.total,
+        items_count: s.items.length,
+        items:       s.items,
+      })));
+    },
+
+    // ── Tracked items ─────────────────────────────────────────────────────
+    upsertTracked(item) {
+      const idx = _tracked.findIndex(t => t.name.toLowerCase() === item.name.toLowerCase());
+      if (idx >= 0) _tracked[idx] = item; else _tracked.unshift(item);
+      _save(LS_TRACKED, _tracked);
+    },
+    removeTracked(id) {
+      _tracked = _tracked.filter(t => t.id !== id);
+      _save(LS_TRACKED, _tracked);
+    },
+  };
+})();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Legacy state (kept in place — reads AppState where possible)
+// ─────────────────────────────────────────────────────────────────────────────
+let sel = { search: [...DEFAULT_STORES], plan: [...DEFAULT_STORES], settings: [...DEFAULT_STORES], me: [...DEFAULT_STORES] };
+let prefs = JSON.parse(localStorage.getItem('gdm_prefs') || '{}');
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Initialise canonical state store first
+  AppState.init();
+
+  // Seed legacy `prefs` and `sel` from AppState.settings so all existing code works
+  const s = AppState.settings;
+  prefs = {
+    location:      s.location,
+    stores:        s.defaultStores,
+    loyalty_cards: s.loyaltyCards,
+    phone:         s.whatsappNumber,
+  };
+  if (s.defaultStores.length) {
+    sel.plan = sel.settings = sel.me = sel.search = [...s.defaultStores];
+  } else if (prefs.stores && prefs.stores.length) {
+    sel.plan = sel.settings = sel.me = sel.search = [...prefs.stores];
+  }
+
+  initLocationAutocomplete();
+  loadMyList();
+  // Wire loyalty pill on load in case user already has cards saved
+  setTimeout(updateLoyaltyFilterPill, 0);
+});
+
+function showTab(name, btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  const el = document.getElementById('tab-' + name);
+  if (el) el.classList.add('active');
+  btn.classList.add('active');
+  document.getElementById('scroll-area').scrollTop = 0;
+  if (name === 'mylist')    loadMyList();
+  if (name === 'smartplan') initSmartPlanTab();
+  if (name === 'tracker')   initTrackerTab();
+  if (name === 'me')        initMeTab();
+}
+
+// ── Me Tab ────────────────────────────────────────────────────
+const LOYALTY_CARDS = [
+  { id: 'lc-clubcard', key: 'clubcard',   label: 'Tesco Clubcard' },
+  { id: 'lc-nectar',   key: 'nectar',     label: "Sainsbury's Nectar" },
+  { id: 'lc-more',     key: 'more',       label: 'Morrisons More Card' },
+  { id: 'lc-waitrose', key: 'mywaitrose', label: 'Waitrose myWaitrose' },
+  { id: 'lc-coop',     key: 'coop',       label: 'Co-op Membership' },
+];
+
+function initMeTab() {
+  // Populate inputs from saved prefs
+  const phoneEl = document.getElementById('me-phone');
+  const locEl   = document.getElementById('me-location');
+  if (phoneEl) phoneEl.value = prefs.phone    || '';
+  if (locEl)   locEl.value   = prefs.location || '';
+
+  // Loyalty card toggles
+  const lc = prefs.loyalty_cards || {};
+  LOYALTY_CARDS.forEach(c => {
+    const el = document.getElementById(c.id);
+    if (el) el.checked = !!lc[c.key];
+  });
+
+  // Store chips
+  if (prefs.stores && prefs.stores.length) sel.me = [...prefs.stores];
+  renderChips('me');
+
+  // Render dynamic sections
+  renderMeHero();
+  renderSpendHistory();
+  renderItemPrefs();
+}
+
+function toggleAcc(id) {
+  const body = document.getElementById('body-' + id);
+  const chev = document.getElementById('chev-' + id);
+  if (!body) return;
+  const open = body.style.display === 'none';
+  body.style.display = open ? '' : 'none';
+  if (chev) chev.classList.toggle('open', open);
+  // Populate content on first open
+  if (open) {
+    if (id === 'spending')  renderSpendHistory();
+    if (id === 'itemprefs') renderItemPrefs();
+  }
+}
+
+function renderMeHero() {
+  const history = JSON.parse(localStorage.getItem('gdm_spend_history') || '[]');
+  let totalSaved = 0;
+  for (const h of history) {
+    const diff = (h.estimated || 0) - (h.amount || 0);
+    if (diff > 0) totalSaved += diff;
+  }
+  const amtEl = document.getElementById('me-saved-amount');
+  const subEl = document.getElementById('me-saved-sub');
+  if (amtEl) amtEl.textContent = `£${totalSaved.toFixed(2)}`;
+  if (subEl) subEl.textContent = history.length
+    ? `vs. estimates · ${history.length} trip${history.length !== 1 ? 's' : ''} recorded`
+    : 'No trips recorded yet — tick off items in Smart Plan';
+}
+
+function renderSpendHistory() {
+  const el = document.getElementById('me-spend-history');
+  if (!el) return;
+  const history = JSON.parse(localStorage.getItem('gdm_spend_history') || '[]');
+  if (!history.length) {
+    el.innerHTML = `<p style="font-size:0.82rem;color:var(--muted);line-height:1.6;padding:4px 0 8px">
+      No trips recorded yet.<br>Tick off items in Smart Plan and log your actual spend.
+    </p>`;
+    return;
+  }
+  el.innerHTML = history.map(h => {
+    const diff = (h.estimated || 0) - (h.amount || 0);
+    const diffHTML = diff > 0.01
+      ? `<span class="spend-pos">↓ £${diff.toFixed(2)} under</span>`
+      : diff < -0.01
+      ? `<span class="spend-neg">↑ £${Math.abs(diff).toFixed(2)} over</span>`
+      : `<span style="color:var(--muted);font-size:0.78rem">on estimate</span>`;
+    const itemList = h.items && h.items.length
+      ? h.items.slice(0, 4).map(esc).join(', ') + (h.items.length > 4 ? ` +${h.items.length - 4}` : '')
+      : '';
+    return `<div class="spend-row">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+          ${badge(h.store)}
+          <span class="spend-amount">£${h.amount.toFixed(2)}</span>
+          ${diffHTML}
+        </div>
+        <div class="spend-meta">
+          ${fmtDate(h.date)} · ${h.items_count || 0} item${(h.items_count||0) !== 1 ? 's' : ''}
+          ${h.estimated ? ` · est. £${h.estimated.toFixed(2)}` : ''}
+        </div>
+        ${itemList ? `<div class="spend-meta">${itemList}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderItemPrefs() {
+  const el = document.getElementById('me-item-prefs');
+  if (!el) return;
+  if (!_myListItems.length) {
+    el.innerHTML = `<p style="font-size:0.82rem;color:var(--muted);padding:4px 0 8px">No items in your list yet.</p>`;
+    return;
+  }
+  el.innerHTML = _myListItems.map(item => {
+    const st = item.preferred_store;
+    const k  = st ? storeKey(st) : '';
+    return `<div style="display:flex;align-items:center;justify-content:space-between;
+                        padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.07)">
+      <span style="font-size:0.86rem;font-weight:600;color:rgba(255,255,255,0.9)">${esc(item.generic_name)}</span>
+      ${st
+        ? `<span class="list-store-badge lsb-${k}">${esc(st)}</span>`
+        : `<span style="font-size:0.74rem;color:var(--muted)">Any store</span>`}
+    </div>`;
+  }).join('')
+  + `<p style="font-size:0.72rem;color:var(--muted);padding-top:10px;line-height:1.4">
+       Set store preferences per item in My List ›
+     </p>`;
+}
+
+async function detectMeLocation() {
+  if (!navigator.geolocation) { toast('Geolocation not supported'); return; }
+  const btn = document.getElementById('me-detect-btn');
+  if (btn) { btn.innerHTML = '<span class="spinner" style="border-top-color:var(--text)"></span> Detecting…'; btn.disabled = true; }
+  navigator.geolocation.getCurrentPosition(
+    async ({ coords }) => {
+      try {
+        const res  = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${coords.latitude}&lon=${coords.longitude}&format=json`,
+          { headers: { 'Accept-Language': 'en' } }
+        );
+        const data = await res.json();
+        const { full } = placeLabel(data, false);
+        const loc = full || data.display_name;
+        const el = document.getElementById('me-location');
+        if (el) el.value = loc;
+        prefs.location = loc;
+        toast('Location detected ✓');
+      } catch { toast('Could not reverse-geocode'); }
+      finally { if (btn) { btn.innerHTML = '📍 Detect my location'; btn.disabled = false; } }
+    },
+    err => {
+      toast(err.code === 1 ? 'Location access denied' : 'Could not get location');
+      if (btn) { btn.innerHTML = '📍 Detect my location'; btn.disabled = false; }
+    },
+    { timeout: 8000 }
+  );
+}
+
+function saveMeTab() {
+  const phoneEl = document.getElementById('me-phone');
+  const locEl   = document.getElementById('me-location');
+  const loyaltyCards = {};
+  LOYALTY_CARDS.forEach(c => {
+    const el = document.getElementById(c.id);
+    loyaltyCards[c.key] = el ? el.checked : false;
+  });
+  prefs = {
+    ...prefs,
+    phone:         phoneEl ? phoneEl.value.trim() : (prefs.phone    || ''),
+    location:      locEl   ? locEl.value.trim()   : (prefs.location || ''),
+    stores:        [...(sel.me.length ? sel.me : DEFAULT_STORES)],
+    loyalty_cards: loyaltyCards,
+  };
+  localStorage.setItem('gdm_prefs', JSON.stringify(prefs));
+  // Sync all selectors so tracker, plan, and settings see the same stores
+  sel.plan = sel.settings = sel.search = [...prefs.stores];
+  updateLoyaltyFilterPill();
+  toast('Preferences saved ✓');
+}
+
+// ── Price Tracker ────────────────────────────────────────────
+let _trackerView     = 'search';
+let _trackerFilter   = 'all';
+let _trackerResults  = [];        // raw search results
+let _trackerQuery    = '';
+let _trackerTracked  = new Set(); // product names already tracked in this session
+let _pinnedHistory   = [];        // from /my-groceries/prices
+let _pinnedExpanded  = null;      // item_name currently showing full chart
+
+const INSTORE_KEYS = ['tesco','sainsbury','asda','morrison','iceland','waitrose','lidl','aldi','co-op','coop','m&s','marks'];
+
+function isInstore(storeName) {
+  const s = (storeName || '').toLowerCase();
+  return INSTORE_KEYS.some(k => s.includes(k));
+}
+
+// Loyalty product-name keyword → prefs.loyalty_cards key mapping
+const LOYALTY_STORE_MAP = [
+  { key: 'clubcard',  prefsKey: 'clubcard',   label: 'Clubcard' },
+  { key: 'nectar',    prefsKey: 'nectar',     label: 'Nectar' },
+  { key: 'more card', prefsKey: 'more',       label: 'More Card' },
+  { key: 'mywaitrose',prefsKey: 'mywaitrose', label: 'myWaitrose' },
+  { key: 'co-op',     prefsKey: 'coop',       label: 'Co-op' },
+];
+
+function hasLoyalty(productName) {
+  // True if the product name mentions a loyalty scheme the user actually holds
+  const p   = (productName || '').toLowerCase();
+  const lc  = prefs.loyalty_cards || {};
+  // Fall back to product-name heuristic if no cards configured yet
+  const anyConfigured = Object.values(lc).some(Boolean);
+  if (!anyConfigured) {
+    return p.includes('clubcard') || p.includes('nectar') || p.includes('more card') || p.includes('loyalty');
+  }
+  return LOYALTY_STORE_MAP.some(m => lc[m.prefsKey] && p.includes(m.key));
+}
+
+function userHasAnyLoyaltyCard() {
+  const lc = prefs.loyalty_cards || {};
+  return Object.values(lc).some(Boolean);
+}
+
+function updateLoyaltyFilterPill() {
+  const row = document.getElementById('tracker-filter-row');
+  if (!row) return;
+  const existing = row.querySelector('[data-filter="loyalty"]');
+  if (userHasAnyLoyaltyCard()) {
+    if (!existing) {
+      const pill = document.createElement('button');
+      pill.className = 'filter-pill';
+      pill.dataset.filter = 'loyalty';
+      pill.textContent = '🏷 My Loyalty';
+      pill.onclick = () => setTrackerFilter('loyalty');
+      row.appendChild(pill);
+    }
+  } else {
+    if (existing) existing.remove();
+    // Reset filter if it was on loyalty
+    if (_trackerFilter === 'loyalty') { _trackerFilter = 'all'; }
+  }
+}
+
+function initTrackerTab() {
+  // Re-render current view in case data changed
+  updateLoyaltyFilterPill();
+  if (_trackerView === 'pinned') loadPinnedItems();
+}
+
+function setTrackerView(view) {
+  _trackerView = view;
+  document.querySelectorAll('.mode-btn[data-view]').forEach(b =>
+    b.classList.toggle('active', b.dataset.view === view)
+  );
+  document.getElementById('tracker-search-view').style.display = view === 'search' ? '' : 'none';
+  document.getElementById('tracker-pinned-view').style.display = view === 'pinned' ? '' : 'none';
+  if (view === 'pinned') loadPinnedItems();
+}
+
+function setTrackerFilter(f) {
+  _trackerFilter = f;
+  document.querySelectorAll('.filter-pill').forEach(p =>
+    p.classList.toggle('active', p.dataset.filter === f)
+  );
+  renderTrackerResults();
+}
+
+function onTrackerKey(e) {
+  if (e.key === 'Enter') doTrackerSearch();
+}
+
+async function doTrackerSearch() {
+  const input = document.getElementById('tracker-input');
+  const q     = input ? input.value.trim() : '';
+  if (!q) { toast('Enter a product to search'); return; }
+
+  _trackerQuery   = q;
+  _trackerResults = [];
+
+  const loadEl    = document.getElementById('tracker-search-loading');
+  const resultsEl = document.getElementById('tracker-results');
+  const filterRow = document.getElementById('tracker-filter-row');
+  const btn       = document.getElementById('tracker-search-btn');
+
+  if (loadEl)    loadEl.style.display    = '';
+  if (resultsEl) resultsEl.innerHTML     = '';
+  if (filterRow) filterRow.style.display = 'none';
+  if (btn)       { btn.disabled = true; btn.textContent = '…'; }
+
+  try {
+    const location = prefs.location || 'London, United Kingdom';
+    const d = await api('/search', 'POST', { query: q, location });
+    _trackerResults = d.results || [];
+
+    if (loadEl) loadEl.style.display = 'none';
+    if (filterRow && _trackerResults.length) filterRow.style.display = '';
+
+    // Reset filter to All for new search; rebuild loyalty pill based on results
+    _trackerFilter = 'all';
+    updateLoyaltyFilterPill();
+    document.querySelectorAll('.filter-pill').forEach(p =>
+      p.classList.toggle('active', p.dataset.filter === 'all')
+    );
+
+    renderTrackerResults();
+
+    const sub = document.getElementById('tracker-subtitle');
+    if (sub && _trackerResults.length) {
+      sub.textContent = `${_trackerResults.length} result${_trackerResults.length !== 1 ? 's' : ''} for "${q}"`;
+    }
+  } catch (e) {
+    if (loadEl) loadEl.style.display = 'none';
+    if (resultsEl) resultsEl.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><p>${esc(e.message)}</p></div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '→'; }
+  }
+}
+
+function renderTrackerResults() {
+  const el = document.getElementById('tracker-results');
+  if (!el) return;
+
+  if (!_trackerResults.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">😕</div><p>No results for "${esc(_trackerQuery)}".<br>Try broader terms.</p></div>`;
+    return;
+  }
+
+  // Apply filter
+  let filtered = _trackerResults;
+  if (_trackerFilter === 'instore')  filtered = _trackerResults.filter(r => isInstore(r.store));
+  if (_trackerFilter === 'online')   filtered = _trackerResults.filter(r => !isInstore(r.store));
+  if (_trackerFilter === 'loyalty')  filtered = _trackerResults.filter(r => hasLoyalty(r.product));
+
+  const filterLabels = { instore: 'in-store', online: 'online', loyalty: 'loyalty' };
+  if (!filtered.length) {
+    el.innerHTML = `<div class="empty" style="padding:32px 16px"><div class="empty-icon" style="font-size:2rem">🔍</div><p>No ${filterLabels[_trackerFilter] || ''} results.<br>Try the "All" filter.</p></div>`;
+    return;
+  }
+
+  // Deduplicate by product name
+  const seen = new Set();
+  const unique = filtered.filter(r => { if (seen.has(r.product)) return false; seen.add(r.product); return true; });
+
+  const trackedNames = new Set(_myListItems.map(i => i.generic_name.toLowerCase()));
+
+  let html = `<div class="card">
+    <span class="label">${unique.length} product${unique.length !== 1 ? 's' : ''}</span>`;
+
+  unique.forEach(r => {
+    const isTracked  = _trackerTracked.has(r.product) || trackedNames.has(r.product.toLowerCase());
+    const loyal      = hasLoyalty(r.product);
+    const storeIsIn  = isInstore(r.store);
+
+    html += `<div class="result-row">
+      <div class="result-left">
+        <div class="result-name">${esc(r.product)}</div>
+        <div class="result-meta">
+          ${badge(r.store)}
+          ${storeIsIn ? '' : '<span style="font-size:0.65rem;color:var(--muted)">online</span>'}
+          ${loyal ? '<span class="loyalty-tag">🏷 Loyalty price</span>' : ''}
+        </div>
+      </div>
+      <span class="result-price">£${Number(r.price).toFixed(2)}</span>
+      <button class="track-btn${isTracked ? ' tracked' : ''}"
+              onclick="trackItem('${escAttr(r.product)}','${escAttr(r.store)}','${escAttr(_trackerQuery)}',this)">
+        ${isTracked ? '✓ Saved' : '+ Track'}
+      </button>
+    </div>`;
+  });
+
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function trackItem(product, store, query, btn) {
+  // Open the existing save-to-list modal
+  openModal(product, store, query, btn);
+  // Mark optimistically
+  _trackerTracked.add(product);
+}
+
+async function loadPinnedItems() {
+  const loadEl  = document.getElementById('tracker-pinned-loading');
+  const listEl  = document.getElementById('tracker-pinned-list');
+  if (loadEl) loadEl.style.display = '';
+  if (listEl) listEl.innerHTML = '';
+
+  try {
+    const [groceries, prices] = await Promise.all([
+      api('/my-groceries', 'GET'),
+      api('/my-groceries/prices', 'GET'),
+    ]);
+
+    _myListItems  = groceries.items || [];
+    _pinnedHistory = prices.items  || [];
+
+    if (loadEl) loadEl.style.display = 'none';
+    renderPinnedItems();
+  } catch (e) {
+    if (loadEl) loadEl.style.display = 'none';
+    if (listEl) listEl.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><p>Could not load pinned items</p></div>`;
+  }
+}
+
+function renderPinnedItems() {
+  const listEl = document.getElementById('tracker-pinned-list');
+  if (!listEl) return;
+
+  if (!_myListItems.length) {
+    listEl.innerHTML = `<div class="empty"><div class="empty-icon">📌</div><p>No items tracked yet.<br>Search above and tap <strong style="color:var(--green)">+ Track</strong> to pin items.</p></div>`;
+    return;
+  }
+
+  // Build history lookup by item_name
+  const histMap = {};
+  for (const h of _pinnedHistory) histMap[h.item_name] = h;
+
+  const html = _myListItems.map(item => {
+    const n    = item.generic_name;
+    const hist = histMap[n];
+    const pts  = hist ? [...hist.history].sort((a, b) => a.date.localeCompare(b.date)) : [];
+    const exp  = _pinnedExpanded === n;
+
+    const sparkHTML = pts.length >= 2 ? renderSparkline(pts) : '';
+    const current   = hist && hist.current   != null ? `£${hist.current.toFixed(2)}` : '—';
+    const lowest    = hist && hist.lowest_ever != null ? `lowest £${hist.lowest_ever.toFixed(2)}` : 'no history yet';
+    const trendIcon = hist ? (hist.trend === 'down' ? '📉' : hist.trend === 'up' ? '📈' : '➡️') : '';
+    const storeLabel = item.preferred_store ? ` · ${item.preferred_store}` : '';
+
+    const chartHTML = exp && pts.length >= 2
+      ? `<div class="pinned-chart-wrap" id="pinned-chart-${n.replace(/[^a-z0-9]/gi,'-')}"></div>` : '';
+
+    return `<div class="card" style="margin-bottom:10px">
+      <div class="pinned-item-row" onclick="togglePinnedExpand('${escAttr(n)}')">
+        <div class="pinned-item-info">
+          <div class="pinned-item-name">${esc(n)}</div>
+          <div class="pinned-item-sub">${current}${storeLabel} · ${lowest} ${trendIcon}</div>
+        </div>
+        ${sparkHTML ? `<div style="flex-shrink:0">${sparkHTML}</div>` : ''}
+        <span class="pinned-item-chev${exp ? ' open' : ''}">›</span>
+      </div>
+      ${chartHTML}
+    </div>`;
+  }).join('');
+
+  listEl.innerHTML = html;
+
+  // Render full chart for expanded item (needs DOM to be present first)
+  if (_pinnedExpanded) {
+    const hist = histMap[_pinnedExpanded];
+    if (hist && hist.history.length >= 2) {
+      const container = document.getElementById('pinned-chart-' + _pinnedExpanded.replace(/[^a-z0-9]/gi, '-'));
+      if (container) {
+        const pts = [...hist.history].sort((a, b) => a.date.localeCompare(b.date));
+        renderPriceChart(pts, container);
+      }
+    }
+  }
+}
+
+function togglePinnedExpand(name) {
+  _pinnedExpanded = (_pinnedExpanded === name) ? null : name;
+  renderPinnedItems();
+}
+
+function renderSparkline(pts) {
+  const W = 60, H = 26;
+  const prices = pts.map(p => p.price);
+  const mn = Math.min(...prices), mx = Math.max(...prices);
+  const range = mx - mn || 0.01;
+  const coords = prices.map((p, i) => ({
+    x: (i / Math.max(prices.length - 1, 1)) * W,
+    y: H - ((p - mn) / range) * (H - 4) - 2,
+  }));
+  const d = coords.map((c, i) => `${i === 0 ? 'M' : 'L'}${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ');
+  const last  = coords[coords.length - 1];
+  const color = prices[prices.length - 1] < prices[0] ? '#4ade80'
+              : prices[prices.length - 1] > prices[0] ? '#f87171'
+              : 'rgba(255,255,255,0.4)';
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block">
+    <path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="2.5" fill="${color}"/>
+  </svg>`;
+}
+
+// ── Smart Plan ───────────────────────────────────────────────
+let _planData      = null;   // raw API response (cheapest multi-store plan)
+let _planFewest    = null;   // computed fewest-stops plan { trips, missing, total }
+let _planMode      = 'cheapest';
+let _tripTicked    = {};     // { storeName: Set<itemName> }
+let _spendRecorded = new Set();
+
+function initSmartPlanTab() {
+  if (_planData) {
+    document.getElementById('plan-empty-state').style.display = 'none';
+    document.getElementById('plan-content').style.display = '';
+    renderPlan();
+  }
+}
+
+// ── Fewest-stops algorithm ────────────────────────────────────
+// Uses all_prices returned from API to regroup items under minimum stores.
+// all_prices entries: { item_query, product, price, store }
+function computeFewestStops(items, allPrices) {
+  // Build: priceMap[itemName][storeName] = { price, product }  (cheapest per store)
+  const priceMap = {};
+  for (const p of allPrices) {
+    const n = p.item_query;
+    if (!priceMap[n]) priceMap[n] = {};
+    if (!priceMap[n][p.store] || p.price < priceMap[n][p.store].price) {
+      priceMap[n][p.store] = { price: p.price, product: p.product };
+    }
+  }
+
+  const allStores = [...new Set(allPrices.map(p => p.store))];
+  const trips = [];
+  const covered = new Set();
+  const pool = [...allStores];
+
+  while (covered.size < items.length && pool.length > 0) {
+    // Pick store that covers the most uncovered items; break ties by lowest subtotal
+    let bestStore = null, bestCan = [], bestTotal = Infinity;
+    for (const store of pool) {
+      const can = items.filter(it => !covered.has(it) && priceMap[it] && priceMap[it][store]);
+      if (can.length === 0) continue;
+      const tot = can.reduce((s, it) => s + priceMap[it][store].price, 0);
+      if (can.length > bestCan.length || (can.length === bestCan.length && tot < bestTotal)) {
+        bestStore = store; bestCan = can; bestTotal = tot;
+      }
+    }
+    if (!bestStore) break;
+
+    const tripItems = bestCan.map(it => ({
+      item: it,
+      product: priceMap[it][bestStore].product,
+      price:   priceMap[it][bestStore].price,
+    }));
+    const subtotal = tripItems.reduce((s, i) => s + i.price, 0);
+    trips.push({ store: bestStore, items: tripItems, subtotal });
+    bestCan.forEach(i => covered.add(i));
+    pool.splice(pool.indexOf(bestStore), 1);
+  }
+
+  const missing = items.filter(i => !covered.has(i));
+  const total   = trips.reduce((s, t) => s + t.subtotal, 0);
+  return { trips, missing, total };
+}
+
+/**
+ * Savings = (cost to buy every priced item at one chain) − planTotal.
+ * Prefers Tesco when it's in userStores and has a full basket; otherwise
+ * uses the cheapest completing one-stop among userStores.
+ */
+function computeSavingsVsOneStop(selectedItems, allPrices, userStores, itemsMissing, planTotal) {
+  const miss = new Set((itemsMissing || []).map(m => String(m).toLowerCase()));
+  const pricedItems = selectedItems.filter(i => !miss.has(String(i).toLowerCase()));
+  if (!pricedItems.length || !userStores || !userStores.length) {
+    return { savings: 0, vsStore: '', oneStop: 0 };
+  }
+
+  const best = {};
+  for (const p of allPrices) {
+    const iq = p.item_query;
+    const st = p.store;
+    if (!iq || !st) continue;
+    if (!best[iq]) best[iq] = {};
+    if (!best[iq][st] || p.price < best[iq][st].price) {
+      best[iq][st] = { price: p.price };
+    }
+  }
+
+  function totalAt(store) {
+    let t = 0;
+    for (const it of pricedItems) {
+      const row = best[it] && best[it][store];
+      if (!row) return null;
+      t += row.price;
+    }
+    return t;
+  }
+
+  let baselineStore = '';
+  let baselineTotal = null;
+
+  if (userStores.includes('Tesco')) {
+    const tt = totalAt('Tesco');
+    if (tt != null) {
+      baselineStore = 'Tesco';
+      baselineTotal = tt;
+    }
+  }
+
+  if (baselineTotal == null) {
+    for (const st of userStores) {
+      const tt = totalAt(st);
+      if (tt == null) continue;
+      if (baselineTotal == null || tt < baselineTotal) {
+        baselineTotal = tt;
+        baselineStore = st;
+      }
+    }
+  }
+
+  if (baselineTotal == null) {
+    return { savings: 0, vsStore: '', oneStop: 0 };
+  }
+
+  const savings = Math.max(0, baselineTotal - Number(planTotal || 0));
+  return { savings, vsStore: baselineStore, oneStop: baselineTotal };
+}
+
+async function generatePlan() {
+  const items = _myListItems
+    .filter(i => _checkedItems.has(i.generic_name))
+    .map(i => i.generic_name);
+
+  const emptyEl   = document.getElementById('plan-empty-state');
+  const contentEl = document.getElementById('plan-content');
+  const loadEl    = document.getElementById('plan-loading');
+
+  if (!items.length) {
+    if (emptyEl) {
+      emptyEl.style.display = '';
+      emptyEl.innerHTML = `<div class="card" style="text-align:center;padding:36px 20px">
+        <div style="font-size:2.2rem;margin-bottom:12px">🛒</div>
+        <div style="font-size:1rem;font-weight:700;color:#fff;margin-bottom:8px">Nothing selected</div>
+        <div style="font-size:0.82rem;color:var(--muted);margin-bottom:20px;line-height:1.55">
+          Tap items in My List to select<br>what you're buying today
+        </div>
+        <button class="btn btn-glass" onclick="goToMyList()">Go to My List</button>
+      </div>`;
+    }
+    if (contentEl) contentEl.style.display = 'none';
+    return;
+  }
+
+  emptyEl.style.display   = 'none';
+  contentEl.style.display = 'none';
+  loadEl.style.display    = '';
+
+  try {
+    const location = prefs.location || 'London, United Kingdom';
+    const stores   = prefs.stores && prefs.stores.length ? prefs.stores : DEFAULT_STORES;
+    _planData = await api('/shopping-plan', 'POST', {
+      items, stores, location,
+    });
+
+    // Compute fewest-stops plan from the raw price data the backend now returns
+    const allPrices = _planData.all_prices || [];
+    _planFewest = computeFewestStops(items, allPrices);
+
+    _tripTicked    = {};
+    _spendRecorded = new Set();
+    // Init tick state for both plan variants
+    [...(_planData.trips || []), ...(_planFewest.trips || [])].forEach(t => {
+      if (!_tripTicked[t.store]) _tripTicked[t.store] = new Set();
+    });
+
+    loadEl.style.display    = 'none';
+    contentEl.style.display = '';
+
+    document.querySelectorAll('.mode-btn').forEach(b =>
+      b.classList.toggle('active', b.dataset.mode === _planMode)
+    );
+    renderPlan();
+
+    const sub = document.getElementById('smartplan-subtitle');
+    if (sub) sub.textContent = `${items.length} item${items.length !== 1 ? 's' : ''} · ${stores.length} stores checked`;
+
+  } catch (e) {
+    loadEl.style.display = 'none';
+    emptyEl.style.display = '';
+    emptyEl.innerHTML = `<div class="card" style="text-align:center;padding:32px 20px">
+      <div style="font-size:2rem;margin-bottom:10px">⚠️</div>
+      <div style="font-size:0.9rem;font-weight:700;color:#fff;margin-bottom:6px">Plan failed</div>
+      <div style="font-size:0.8rem;color:var(--muted);margin-bottom:18px">${esc(e.message)}</div>
+      <button class="btn btn-green" onclick="generatePlan()">Try Again</button>
+    </div>`;
+  }
+}
+
+function setPlanMode(mode) {
+  _planMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.mode === mode)
+  );
+  renderPlan();
+}
+
+function planBorderClass(k) {
+  const map = { tesco:'card-blue', sainsburys:'card-yellow', asda:'card-green',
+                morrisons:'card-yellow', waitrose:'card-green', iceland:'card-red',
+                lidl:'card-yellow', aldi:'card-blue', coop:'card-red', ms:'card-blue' };
+  return map[k] || '';
+}
+
+function renderPlan() {
+  if (!_planData) return;
+
+  const isCheapest  = _planMode === 'cheapest';
+  const activePlan  = isCheapest ? _planData : _planFewest;
+  const trips       = activePlan.trips || [];
+  const total       = trips.reduce((s, t) => s + t.subtotal, 0);
+  const itemCount   = trips.reduce((s, t) => s + t.items.length, 0);
+
+  const selectedItems = _myListItems
+    .filter(i => _checkedItems.has(i.generic_name))
+    .map(i => i.generic_name);
+  const allPrices = _planData.all_prices || [];
+  const userStores = (prefs.stores && prefs.stores.length ? prefs.stores : DEFAULT_STORES);
+
+  const planTotalCheapest = (_planData.trips || []).reduce((s, t) => s + t.subtotal, 0)
+    || Number(_planData.total_estimated || 0);
+  const planTotalFewest = _planFewest ? _planFewest.total : planTotalCheapest;
+  const activePlanTotal = isCheapest ? planTotalCheapest : planTotalFewest;
+
+  const missingForMode = isCheapest ? (_planData.items_missing || []) : (_planFewest.missing || []);
+  let sv;
+  if (isCheapest && (Number(_planData.one_stop_baseline_total) > 0 || (_planData.savings_vs_store || '').length)) {
+    sv = {
+      savings: Math.max(0, Number(_planData.savings_estimate || 0)),
+      vsStore: _planData.savings_vs_store || '',
+      oneStop: Number(_planData.one_stop_baseline_total || 0),
+    };
+  } else {
+    sv = computeSavingsVsOneStop(selectedItems, allPrices, userStores, missingForMode, activePlanTotal);
+  }
+
+  // ── Hero ──────────────────────────────────────────────────────
+  const heroEl = document.getElementById('plan-hero');
+  if (heroEl) {
+    const stopsCount = trips.length;
+    const stopsWord  = stopsCount !== 1 ? 'stores' : 'store';
+    const subHero = sv.vsStore
+      ? `vs. one-stop at ${esc(sv.vsStore)}`
+      : (sv.oneStop > 0 ? 'Compared to cheapest one-stop basket' : 'Not enough prices to compare a one-stop basket.');
+
+    heroEl.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
+        <div>
+          <div class="hero-label">YOU SAVE</div>
+          <div class="hero-price" style="color:var(--green)">£${sv.savings.toFixed(2)}</div>
+          <div class="hero-name">${subHero}</div>
+        </div>
+        <div style="text-align:right">
+          <div class="hero-label">STOPS</div>
+          <div style="font-size:2.6rem;font-weight:900;color:#fff;line-height:1">${stopsCount}</div>
+          <div class="hero-name">${stopsWord}</div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;
+                  padding:9px 13px;background:rgba(255,255,255,0.06);border-radius:10px">
+        <span style="font-size:0.8rem;color:var(--muted)">Plan total</span>
+        <span style="font-size:1rem;font-weight:800;color:#fff">£${activePlanTotal.toFixed(2)}</span>
+      </div>
+      ${sv.oneStop > 0 ? `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;
+          padding:7px 13px;background:rgba(255,255,255,0.04);border-radius:10px">
+        <span style="font-size:0.72rem;color:var(--muted)">One-stop basket${sv.vsStore ? ' at ' + esc(sv.vsStore) : ''}</span>
+        <span style="font-size:0.82rem;font-weight:700;color:rgba(255,255,255,0.65)">£${sv.oneStop.toFixed(2)}</span>
+      </div>` : ''}
+      ${isCheapest && _planData.summary ? `<div style="margin-top:10px;padding:9px 12px;background:rgba(74,222,128,0.1);border-radius:10px;font-size:0.78rem;color:#86efac;line-height:1.45">💡 ${esc(_planData.summary)}</div>` : ''}
+    `;
+  }
+
+  // ── Trip cards ────────────────────────────────────────────────
+  const tripsEl = document.getElementById('plan-trips');
+  if (tripsEl) tripsEl.innerHTML = trips.map(t => renderTripCard(t)).join('');
+
+  // ── Missing items ─────────────────────────────────────────────
+  const missing  = isCheapest ? (_planData.items_missing || []) : (_planFewest.missing || []);
+  const missingEl = document.getElementById('plan-missing');
+  if (missingEl) {
+    missingEl.innerHTML = missing.length
+      ? `<div class="card" style="margin-bottom:12px">
+          <span class="label" style="color:#fcd34d">NOT FOUND (${missing.length})</span>
+          ${missing.map(m => `<div class="missing">⚠️ ${esc(m)}</div>`).join('')}
+         </div>`
+      : '';
+  }
+
+  // ── Plan curve ────────────────────────────────────────────────
+  const curveEl = document.getElementById('plan-curve');
+  if (curveEl) {
+    const plans = _planData.all_plans || [];
+    const recIdx = _planData.recommended_plan_idx || 0;
+    if (plans.length <= 1) {
+      curveEl.innerHTML = '';
+    } else {
+      curveEl.innerHTML = `
+        <div style="font-size:0.72rem;color:var(--muted);font-weight:600;letter-spacing:0.06em;margin-bottom:8px">STOP OPTIONS</div>
+        <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none">
+          ${plans.map((p, idx) => {
+            const isRec = idx === recIdx;
+            const stores = (p.trips || []).map(t => t.store).join(' + ');
+            return `<div style="
+              flex:0 0 auto;min-width:100px;padding:10px 12px;border-radius:12px;
+              background:${isRec ? 'rgba(74,222,128,0.15)' : 'rgba(255,255,255,0.06)'};
+              border:1px solid ${isRec ? 'rgba(74,222,128,0.45)' : 'rgba(255,255,255,0.1)'};
+              cursor:pointer;text-align:center
+            " onclick="selectPlanFromCurve(${idx})">
+              <div style="font-size:1.4rem;font-weight:900;color:${isRec ? 'var(--green)' : '#fff'};line-height:1">${p.stops}</div>
+              <div style="font-size:0.65rem;color:var(--muted);margin-bottom:6px">stop${p.stops !== 1 ? 's' : ''}</div>
+              <div style="font-size:0.78rem;font-weight:700;color:#fff">£${Number(p.total).toFixed(2)}</div>
+              ${isRec ? `<div style="font-size:0.6rem;color:var(--green);margin-top:4px;font-weight:700">★ REC</div>` : ''}
+              <div style="font-size:0.6rem;color:var(--muted);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:90px">${esc(stores)}</div>
+            </div>`;
+          }).join('')}
+        </div>
+      `;
+    }
+  }
+}
+
+function selectPlanFromCurve(idx) {
+  if (!_planData || !_planData.all_plans) return;
+  const plan = _planData.all_plans[idx];
+  if (!plan) return;
+  // Overwrite the recommended plan on _planData so the hero + trips update
+  _planData.trips            = plan.trips;
+  _planData.total_estimated  = plan.total;
+  _planData.savings_estimate = plan.saving;
+  _planData.recommended_plan_idx = idx;
+  _planMode = 'cheapest';
+  document.querySelectorAll('.mode-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.mode === 'cheapest')
+  );
+  renderPlan();
+}
+
+function renderTripCard(trip) {
+  const ticked  = _tripTicked[trip.store] || new Set();
+  const allDone = trip.items.length > 0 && ticked.size === trip.items.length;
+  const border  = planBorderClass(storeKey(trip.store));
+
+  const itemsHTML = trip.items.map(it => {
+    const done = ticked.has(it.item);
+    return `<div class="trip-item-row${done ? ' ticked' : ''}">
+      <div class="trip-check${done ? ' checked' : ''}"
+           onclick="tickTripItem('${escAttr(trip.store)}','${escAttr(it.item)}')">${done ? '✓' : ''}</div>
+      <div style="flex:1;min-width:0">
+        <div class="trip-item-name${done ? ' ticked' : ''}">${esc(it.item)}</div>
+        <div style="font-size:0.72rem;color:var(--muted);margin-top:2px">${esc(it.product)}</div>
+      </div>
+      <div class="trip-item-price${done ? ' ticked' : ''}">£${it.price.toFixed(2)}</div>
+    </div>`;
+  }).join('');
+
+  const sid = 'spend-' + trip.store.replace(/[^a-z0-9]/gi, '-');
+
+  const recordHTML = allDone && !_spendRecorded.has(trip.store)
+    ? `<div class="record-spend-card">
+        <div class="record-spend-title">All done at ${esc(trip.store)}! 🎉</div>
+        <div class="record-spend-sub">How much did you actually spend?</div>
+        <div class="record-spend-row">
+          <div class="record-spend-wrap">
+            <span class="record-spend-sym">£</span>
+            <input type="number" class="record-spend-input" id="${sid}"
+                   placeholder="0.00" step="0.01" min="0"
+                   onkeydown="if(event.key==='Enter') recordSpend('${escAttr(trip.store)}',${trip.subtotal.toFixed(2)})">
+          </div>
+          <button class="btn btn-green btn-sm"
+                  onclick="recordSpend('${escAttr(trip.store)}',${trip.subtotal.toFixed(2)})">Save</button>
+          <button class="btn btn-glass btn-sm"
+                  onclick="skipSpend('${escAttr(trip.store)}')">Skip</button>
+        </div>
+      </div>`
+    : '';
+
+  const savedHTML = _spendRecorded.has(trip.store)
+    ? `<div style="margin-top:10px;padding:8px 13px;background:rgba(74,222,128,0.1);border-radius:10px;font-size:0.8rem;color:var(--green)">✓ Spend recorded</div>`
+    : '';
+
+  return `<div class="card ${border}" style="margin-bottom:12px">
+    <div class="trip-header">
+      <div class="trip-store">${esc(trip.store)}</div>
+      <div class="trip-sub">£${trip.subtotal.toFixed(2)}</div>
+    </div>
+    ${itemsHTML}
+    ${recordHTML}
+    ${savedHTML}
+  </div>`;
+}
+
+function tickTripItem(store, item) {
+  if (!_tripTicked[store]) _tripTicked[store] = new Set();
+  if (_tripTicked[store].has(item)) _tripTicked[store].delete(item);
+  else _tripTicked[store].add(item);
+  renderPlan();
+  // Auto-focus spend input when all items ticked
+  const activePlan = _planMode === 'cheapest' ? _planData : _planFewest;
+  const trip = (activePlan.trips || []).find(t => t.store === store);
+  if (trip && _tripTicked[store].size === trip.items.length) {
+    const sid = 'spend-' + store.replace(/[^a-z0-9]/gi, '-');
+    setTimeout(() => { const el = document.getElementById(sid); if (el) el.focus(); }, 80);
+  }
+}
+
+function recordSpend(store, estimated) {
+  const sid    = 'spend-' + store.replace(/[^a-z0-9]/gi, '-');
+  const input  = document.getElementById(sid);
+  const amount = parseFloat(input ? input.value.trim() : '');
+  if (!amount || isNaN(amount) || amount <= 0) { if (input) input.focus(); toast('Enter a valid amount'); return; }
+
+  const history = JSON.parse(localStorage.getItem('gdm_spend_history') || '[]');
+  const activePlan = _planMode === 'cheapest' ? _planData : _planFewest;
+  const trip = (activePlan.trips || []).find(t => t.store === store);
+  history.unshift({
+    date:        new Date().toISOString().split('T')[0],
+    store,
+    amount:      +amount.toFixed(2),
+    estimated:   +Number(estimated).toFixed(2),
+    items_count: trip ? trip.items.length : 0,
+    items:       trip ? trip.items.map(i => i.item) : [],
+  });
+  localStorage.setItem('gdm_spend_history', JSON.stringify(history.slice(0, 50)));
+
+  _spendRecorded.add(store);
+  renderPlan();
+  toast(`Saved £${amount.toFixed(2)} at ${store} ✓`);
+}
+
+function skipSpend(store) {
+  _spendRecorded.add(store);
+  renderPlan();
+}
+
+// ── My List ───────────────────────────────────────────────────
+let _myListItems  = [];
+let _checkedItems = new Set(JSON.parse(localStorage.getItem('gdm_checked') || '[]'));
+let _expandedItem = null;
+let _batchItems   = [];
+
+async function loadMyList() {
+  try {
+    const d = await api('/my-groceries', 'GET');
+    _myListItems = d.items || [];
+    renderMyList();
+  } catch (e) {
+    const sub = document.getElementById('mylist-subtitle');
+    if (sub) sub.textContent = 'Could not load list';
+  }
+}
+
+function storeKey(store) {
+  const s = (store || '').toLowerCase();
+  if (s.includes('tesco'))                        return 'tesco';
+  if (s.includes('sainsbury'))                    return 'sainsburys';
+  if (s.includes('asda'))                         return 'asda';
+  if (s.includes('morrison'))                     return 'morrisons';
+  if (s.includes('iceland'))                      return 'iceland';
+  if (s.includes('waitrose'))                     return 'waitrose';
+  if (s.includes('lidl'))                         return 'lidl';
+  if (s.includes('aldi'))                         return 'aldi';
+  if (s.includes('co-op') || s.includes('coop')) return 'coop';
+  if (s.includes('m&s') || s.includes('marks'))  return 'ms';
+  return '';
+}
+
+function renderMyList() {
+  const total    = _myListItems.length;
+  const selected = _myListItems.filter(i => _checkedItems.has(i.generic_name));
+
+  // Subtitle
+  const sub = document.getElementById('mylist-subtitle');
+  if (sub) {
+    if (!total) sub.textContent = 'Add items to get started';
+    else {
+      const loc = (prefs.location || 'Nearby').split(',')[0];
+      sub.textContent = selected.length
+        ? `${loc} · ${selected.length} of ${total} selected for today`
+        : `${loc} · ${total} item${total !== 1 ? 's' : ''} — tap to select`;
+    }
+  }
+
+  // Enable/disable CTA
+  const planBtn = document.getElementById('mylist-plan-btn');
+  if (planBtn) planBtn.disabled = selected.length === 0;
+
+  const container = document.getElementById('mylist-items');
+  if (!container) return;
+
+  if (!total) {
+    container.innerHTML = `<div class="empty"><div class="empty-icon">🛒</div><p>Your list is empty.<br>Add items above to get started.</p></div>`;
+    const sec = document.getElementById('mylist-stores-section');
+    if (sec) sec.style.display = 'none';
+    return;
+  }
+
+  // Render all items — selected first, then unselected
+  const selItems   = _myListItems.filter(i =>  _checkedItems.has(i.generic_name));
+  const unselItems = _myListItems.filter(i => !_checkedItems.has(i.generic_name));
+  container.innerHTML = [
+    ...selItems.map(i => renderListItemHTML(i, true)),
+    ...unselItems.map(i => renderListItemHTML(i, false)),
+  ].join('');
+
+  renderStoresToCheck();
+}
+
+function renderListItemHTML(item, isSelected) {
+  const n   = item.generic_name;
+  const st  = item.preferred_store || null;
+  const br  = item.preferred_brand  || item.preferred_product || null;
+  const exp = _expandedItem === n;
+
+  const storeClass = st ? 'list-store-badge lsb-' + storeKey(st) : '';
+  const storeBadge = st ? `<span class="${storeClass}">${esc(st)}</span>` : '';
+
+  // Expand panel: brand input + store picker (available on all items)
+  const pills = ['None', ...ALL_STORES].map(s => {
+    const isNone = s === 'None';
+    const isSel  = isNone ? !st : (st && st.toLowerCase() === s.toLowerCase());
+    const k      = isNone ? 'none' : storeKey(s);
+    const cls    = 'store-pill' + (isSel ? ' sp-sel-' + k : '');
+    const val    = isNone ? '' : s;
+    return `<button class="${cls}" onclick="setItemStore('${escAttr(n)}','${escAttr(val)}')">${esc(s)}</button>`;
+  }).join('');
+
+  const picker = `<div class="store-picker" id="picker-${escAttr(n)}" style="display:${exp ? 'block' : 'none'}">
+    <div class="store-picker-label" style="margin-bottom:6px">Brand / product spec</div>
+    <input type="text" class="record-spend-input" style="margin-bottom:10px;padding:8px 12px"
+           placeholder="e.g. Oatly, Warburtons thick-sliced"
+           value="${esc(br || '')}"
+           onblur="setItemBrand('${escAttr(n)}',this.value)"
+           onkeydown="if(event.key==='Enter'){this.blur();}">
+    <div class="store-picker-label">Preferred store</div>
+    <div class="chips" style="margin-top:6px">${pills}</div>
+  </div>`;
+
+  return `
+    <div class="list-item${isSelected ? ' selected' : ' unselected'}">
+      <div class="list-check${isSelected ? ' checked' : ''}" onclick="toggleChecked('${escAttr(n)}')">${isSelected ? '✓' : ''}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span class="list-name">${esc(n)}</span>
+          ${storeBadge}
+          ${br ? `<span style="font-size:0.66rem;color:var(--muted);font-style:italic">${esc(br)}</span>` : ''}
+          <span class="list-chevron${exp ? ' open' : ''}" onclick="toggleExpand('${escAttr(n)}')">›</span>
+        </div>
+      </div>
+      <span class="list-remove" onclick="removeMyListItem('${escAttr(n)}')">✕</span>
+    </div>
+    ${picker}`;
+}
+
+function toggleChecked(name) {
+  if (_checkedItems.has(name)) _checkedItems.delete(name);
+  else { _checkedItems.add(name); }
+  localStorage.setItem('gdm_checked', JSON.stringify([..._checkedItems]));
+  renderMyList();
+}
+
+function clearListSelection() {
+  _checkedItems.clear();
+  localStorage.setItem('gdm_checked', JSON.stringify([]));
+  renderMyList();
+}
+
+async function setItemBrand(name, brand) {
+  const item = _myListItems.find(i => i.generic_name === name);
+  if (!item) return;
+  const trimmed = brand.trim();
+  if (trimmed === (item.preferred_brand || item.preferred_product || '')) return; // no change
+  const updated = { ...item, preferred_brand: trimmed || null };
+  try {
+    await api('/my-groceries/add', 'POST', { item: updated });
+    _myListItems = _myListItems.map(i => i.generic_name === name ? updated : i);
+    if (trimmed) toast(`Brand set: ${trimmed}`);
+    else toast('Brand cleared');
+    renderMyList();
+  } catch { toast('Could not save brand'); }
+}
+
+function toggleExpand(name) {
+  _expandedItem = (_expandedItem === name) ? null : name;
+  renderMyList();
+}
+
+async function setItemStore(name, store) {
+  const item = _myListItems.find(i => i.generic_name === name);
+  if (!item) return;
+  const updated = { ...item, preferred_store: store || null };
+  try {
+    await api('/my-groceries/add', 'POST', { item: updated });
+    _myListItems = _myListItems.map(i => i.generic_name === name ? updated : i);
+    _expandedItem = null;
+    renderMyList();
+    toast(store ? `Preferred: ${store}` : 'Store preference cleared');
+  } catch { toast('Could not update preference'); }
+}
+
+async function addListItem() {
+  const input = document.getElementById('mylist-input');
+  const name  = input.value.trim();
+  if (!name) return;
+  try {
+    await api('/my-groceries/add', 'POST', {
+      item: { generic_name: name, preferred_brand: null, preferred_store: null, preferred_product: null }
+    });
+    input.value = '';
+    await loadMyList();
+    toast(`Added: ${name}`);
+  } catch { toast('Could not add item'); }
+}
+
+function onListInputKey(e) {
+  if (e.key === 'Enter') { e.preventDefault(); addListItem(); }
+}
+
+function onListPaste(e) {
+  const text  = (e.clipboardData || window.clipboardData).getData('text');
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) return;  // single line — let native paste handle it
+  e.preventDefault();
+  _batchItems = lines;
+  showBatchPreview();
+}
+
+function showBatchPreview() {
+  const batch = document.getElementById('mylist-batch');
+  const list  = document.getElementById('mylist-batch-list');
+  const count = document.getElementById('mylist-batch-count');
+  if (!batch) return;
+  if (count) count.textContent = _batchItems.length;
+  if (list) list.innerHTML = _batchItems.map((item, i) => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.06)">
+      <span style="font-size:0.86rem;color:rgba(255,255,255,0.85)">${esc(item)}</span>
+      <button style="font-size:0.8rem;color:var(--muted);background:none;border:none;cursor:pointer;padding:2px 8px" onclick="removeBatchItem(${i})">✕</button>
+    </div>`).join('');
+  batch.style.display = '';
+  const inp = document.getElementById('mylist-input');
+  if (inp) inp.value = '';
+}
+
+function removeBatchItem(idx) {
+  _batchItems.splice(idx, 1);
+  if (!_batchItems.length) { cancelBatch(); return; }
+  showBatchPreview();
+}
+
+function cancelBatch() {
+  _batchItems = [];
+  const batch = document.getElementById('mylist-batch');
+  if (batch) batch.style.display = 'none';
+}
+
+async function confirmBatch() {
+  const items = [..._batchItems];
+  if (!items.length) return;
+  const btn = document.getElementById('mylist-batch-confirm-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Adding…'; }
+  cancelBatch();
+  let added = 0;
+  for (const name of items) {
+    try {
+      await api('/my-groceries/add', 'POST', {
+        item: { generic_name: name, preferred_brand: null, preferred_store: null, preferred_product: null }
+      });
+      added++;
+    } catch {}
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Add all'; }
+  await loadMyList();
+  toast(`Added ${added} item${added !== 1 ? 's' : ''} ✓`);
+}
+
+async function removeMyListItem(name) {
+  try {
+    await api('/my-groceries/remove', 'POST', { generic_name: name });
+    _checkedItems.delete(name);
+    localStorage.setItem('gdm_checked', JSON.stringify([..._checkedItems]));
+    _myListItems = _myListItems.filter(i => i.generic_name !== name);
+    if (_expandedItem === name) _expandedItem = null;
+    renderMyList();
+  } catch { toast('Could not remove item'); }
+}
+
+function renderStoresToCheck() {
+  const section = document.getElementById('mylist-stores-section');
+  const chips   = document.getElementById('mylist-stores-chips');
+  if (!section || !chips) return;
+  const active = _myListItems.filter(i => !_checkedItems.has(i.generic_name));
+  const stores = [...new Set(active.map(i => i.preferred_store).filter(Boolean))];
+  if (!stores.length) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  chips.innerHTML = stores.map(s => {
+    const k = storeKey(s);
+    return `<div class="store-check-chip${k ? ' scc-' + k : ''}">${esc(s)}</div>`;
+  }).join('');
+}
+
+function goToSmartPlan() {
+  const btn = document.querySelector('.nav-btn:nth-child(2)');
+  if (btn) showTab('smartplan', btn);
+  generatePlan();
+}
+
+function goToMyList() {
+  const btn = document.querySelector('.nav-btn:nth-child(1)');
+  if (btn) showTab('mylist', btn);
+}
+
+function renderChips(ctx) {
+  const el = document.getElementById(ctx + '-chips');
+  el.innerHTML = '';
+  ALL_STORES.forEach(s => {
+    const c = document.createElement('button');
+    c.className = 'chip' + (sel[ctx].includes(s) ? ' on' : '');
+    c.textContent = s;
+    c.onclick = () => toggleChip(ctx, s, c);
+    el.appendChild(c);
+  });
+}
+
+function toggleChip(ctx, store, chip) {
+  if (sel[ctx].includes(store)) {
+    if (sel[ctx].length === 1) { toast('Keep at least one store selected'); return; }
+    sel[ctx] = sel[ctx].filter(s => s !== store);
+    chip.classList.remove('on');
+  } else {
+    sel[ctx].push(store);
+    chip.classList.add('on');
+  }
+}
+
+
+
+
+
+function fmtDate(dateStr) {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+function fmtDateLong(dateStr) {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+function show(id, visible) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = visible ? '' : 'none';
+}
+
+async function api(path, method, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(path, opts);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || res.statusText);
+  }
+  return res.json();
+}
+
+function badge(store) {
+  const s = store.toLowerCase();
+  let cls = 'b-default';
+  if (s.includes('tesco'))         cls = 'b-tesco';
+  else if (s.includes('sainsbury')) cls = 'b-sainsburys';
+  else if (s.includes('iceland'))   cls = 'b-iceland';
+  else if (s.includes('asda'))      cls = 'b-asda';
+  else if (s.includes('morrison'))  cls = 'b-morrisons';
+  else if (s.includes('waitrose'))  cls = 'b-waitrose';
+  return `<span class="badge ${cls}">${esc(store)}</span>`;
+}
+
+function setBtn(id, text, loading) {
+  const btn = document.getElementById(id);
+  btn.disabled = loading;
+  btn.innerHTML = loading ? `<span class="spinner"></span>${text}` : text;
+}
+
+function setVal(id, val) { document.getElementById(id).value = val; }
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(s) { return String(s).replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
+
+// ── Save from search modal ─────────────────────────────────────
+let _modalBtn = null;
+
+function openModal(product, _store, query, btn) {
+  _modalBtn = btn;
+  document.getElementById('modal-product').textContent = product;
+  document.getElementById('modal-name').value          = query;
+  document.getElementById('save-modal').dataset.product = product;
+  document.getElementById('save-modal').classList.add('open');
+  setTimeout(() => document.getElementById('modal-name').focus(), 280);
+}
+
+function closeModal() {
+  document.getElementById('save-modal').classList.remove('open');
+  _modalBtn = null;
+}
+
+function onModalBgClick(e) {
+  if (e.target === document.getElementById('save-modal')) closeModal();
+}
+
+async function confirmSave() {
+  const name    = document.getElementById('modal-name').value.trim();
+  const product = document.getElementById('save-modal').dataset.product;
+  if (!name) { document.getElementById('modal-name').focus(); return; }
+
+  const btn = document.getElementById('modal-save-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Saving…';
+
+  try {
+    await api('/my-groceries/add-from-search', 'POST', { generic_name: name, product });
+    closeModal();
+    toast('Added to My List ✓');
+    await loadMyList();
+
+    // Clear search UI after saving
+    setVal('search-query', '');
+    document.getElementById('search-results').innerHTML = '';
+    if (_modalBtn) { _modalBtn.textContent = '✓ Saved'; _modalBtn.classList.add('saved'); _modalBtn.disabled = true; }
+  } catch (e) {
+    toast('Could not save: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Save 🥫';
+  }
+}
+
+// Close modal on Escape
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeSuggestions(); } });
+
+// ── Location autocomplete ──────────────────────────────────────
+const LOC_INPUTS = [
+  { inputId: 'me-location', dropId: 'me-location-suggestions' },
+];
+
+function initLocationAutocomplete() {
+  LOC_INPUTS.forEach(({ inputId, dropId }) => {
+    const input = document.getElementById(inputId);
+    const drop  = document.getElementById(dropId);
+    if (!input || !drop) return;
+
+    let timer, activeIdx = -1;
+
+    input.addEventListener('input', () => {
+      clearTimeout(timer);
+      activeIdx = -1;
+      const q = input.value.trim();
+      if (q.length < 2) { drop.classList.remove('open'); drop.innerHTML = ''; return; }
+      timer = setTimeout(() => fetchSuggestions(q, input, drop), 280);
+    });
+
+    input.addEventListener('keydown', e => {
+      const items = drop.querySelectorAll('.loc-suggestion');
+      if (!drop.classList.contains('open') || !items.length) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        activeIdx = Math.min(activeIdx + 1, items.length - 1);
+        items.forEach((el, i) => el.classList.toggle('active', i === activeIdx));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        activeIdx = Math.max(activeIdx - 1, 0);
+        items.forEach((el, i) => el.classList.toggle('active', i === activeIdx));
+      } else if (e.key === 'Enter' && activeIdx >= 0) {
+        e.preventDefault();
+        items[activeIdx].click();
+      }
+    });
+
+    input.addEventListener('blur', () => setTimeout(() => drop.classList.remove('open'), 150));
+  });
+}
+
+const UK_POSTCODE_RE = /^[A-Z]{1,2}\d[A-Z\d]?(\s*\d[A-Z]{2})?$/i;
+
+function placeLabel(place, isPostcode) {
+  const a = place.address || {};
+
+  // Most specific named area first: suburb > neighbourhood > quarter > district > city_district
+  const suburb  = a.suburb || a.neighbourhood || a.quarter || a.city_district || a.district || '';
+  const city    = a.city || a.town || a.village || a.municipality || '';
+  const county  = a.county || a.state_district || '';
+  const postcode = a.postcode || '';
+
+  let main, sub, full;
+
+  if (isPostcode && postcode) {
+    main = postcode;
+    sub  = [suburb, city, county].filter(Boolean).join(', ');
+    full = [postcode, suburb, city, 'United Kingdom'].filter(Boolean).join(', ');
+  } else if (suburb) {
+    // e.g. "Kensington" with "London" + "Greater London" beneath
+    main = suburb;
+    sub  = [city, county].filter(Boolean).join(', ');
+    full = [suburb, city || county, 'United Kingdom'].filter(Boolean).join(', ');
+  } else {
+    main = city || county || place.name;
+    sub  = [county, 'United Kingdom'].filter(v => v && v !== main).join(', ');
+    full = [main, county, 'United Kingdom'].filter(Boolean).join(', ');
+  }
+
+  return { main, sub, full };
+}
+
+async function fetchSuggestions(query, input, drop) {
+  try {
+    const isPostcode = UK_POSTCODE_RE.test(query.trim());
+    const params = new URLSearchParams({
+      q:              query,
+      format:         'json',
+      limit:          '8',
+      addressdetails: '1',
+      countrycodes:   'gb',
+    });
+
+    const res  = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, { headers: { 'Accept-Language': 'en' } });
+    const data = await res.json();
+    if (!data.length) { drop.classList.remove('open'); return; }
+
+    // Deduplicate by the label we'll display
+    const seen = new Set();
+    const unique = data.filter(place => {
+      const label = placeLabel(place, isPostcode).full;
+      if (seen.has(label)) return false;
+      seen.add(label); return true;
+    });
+
+    drop.innerHTML = unique.map(place => {
+      const { main, sub, full } = placeLabel(place, isPostcode);
+      return `<div class="loc-suggestion" data-value="${esc(full)}" onclick="pickLocation(this,'${input.id}')">
+        <div class="loc-main">${esc(main)}</div>
+        ${sub ? `<div class="loc-sub">${esc(sub)}</div>` : ''}
+      </div>`;
+    }).join('');
+    drop.classList.add('open');
+  } catch { /* silently ignore network errors */ }
+}
+
+function pickLocation(el, inputId) {
+  const val = el.dataset.value;
+  setVal(inputId, val);
+  const drop = document.getElementById(inputId + '-suggestions');
+  drop.classList.remove('open');
+  drop.innerHTML = '';
+  // If in settings, also update prefs location live
+  if (inputId === 'me-location') prefs.location = val;
+}
+
+function closeSuggestions() {
+  document.querySelectorAll('.loc-suggestions').forEach(d => d.classList.remove('open'));
+}
+
+// Init after DOM ready
+document.addEventListener('DOMContentLoaded', initLocationAutocomplete);
+</script>
+</body>
+</html>
